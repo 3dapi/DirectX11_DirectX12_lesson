@@ -3,7 +3,10 @@
 //////////////////////////////////////////////////////////////////////
 
 #include <directxcolors.h>
+#include <wrl/client.h>
 #include "D3DApp.h"
+
+using Microsoft::WRL::ComPtr;
 
 D3DApp* D3DApp::m_pAppMain = {};
 D3DApp::D3DApp()
@@ -160,8 +163,6 @@ int D3DApp::InitDevice()
 
 	D3D_DRIVER_TYPE driverType = D3D_DRIVER_TYPE_HARDWARE;
 	D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-	
-	// DirectX 11.0 platforms will not recognize D3D_FEATURE_LEVEL_11_1 so we need to retry without it
 	hr = D3D11CreateDevice(nullptr, driverType, nullptr, createDeviceFlags, &featureLevel, 1, D3D11_SDK_VERSION, &m_d3dDevice, &m_featureLevel, &m_d3dContext);
 	if (FAILED(hr))
 		return hr;
@@ -186,7 +187,6 @@ int D3DApp::InitDevice()
 	if (FAILED(hr))
 		return hr;
 
-	// DirectX 11.0 systems
 	DXGI_SWAP_CHAIN_DESC sd = {};
 	sd.BufferCount = 1;
 	sd.BufferDesc.Width = m_screenSize.cx;
@@ -197,43 +197,41 @@ int D3DApp::InitDevice()
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	sd.OutputWindow = m_hWnd;
 	sd.SampleDesc.Count = 1;
-	sd.SampleDesc.Quality = 0;
 	sd.Windowed = TRUE;
 
 	hr = dxgiFactory->CreateSwapChain(m_d3dDevice, &sd, &m_d3dSwapChain);
-	// Note this tutorial doesn't handle full-screen swapchains so we block the ALT+ENTER shortcut
-	dxgiFactory->MakeWindowAssociation(m_hWnd, DXGI_MWA_NO_ALT_ENTER);
-	dxgiFactory->Release();
-
 	if (FAILED(hr))
 		return hr;
+	// block the ALT+ENTER shortcut
+	dxgiFactory->MakeWindowAssociation(m_hWnd, DXGI_MWA_NO_ALT_ENTER);
+	dxgiFactory->Release();	
 
 	// Create a render target view
 	ID3D11Texture2D* pBackBuffer = nullptr;
 	hr = m_d3dSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&pBackBuffer));
 	if (FAILED(hr))
 		return hr;
-
 	hr = m_d3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &m_d3dRenderTargetView);
 	pBackBuffer->Release();
 	if (FAILED(hr))
 		return hr;
-
 	m_d3dContext->OMSetRenderTargets(1, &m_d3dRenderTargetView, nullptr);
 
 	// Setup the viewport
-	D3D11_VIEWPORT vp;
+	D3D11_VIEWPORT vp{};
 	vp.Width = (FLOAT)m_screenSize.cx;
 	vp.Height = (FLOAT)m_screenSize.cy;
-	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
-	vp.TopLeftX = 0;
-	vp.TopLeftY = 0;
 	m_d3dContext->RSSetViewports(1, &vp);
 	return hr;
 }
 
 int D3DApp::ReleaseDevice()
 {
+	if (m_d3dDevice)	m_d3dDevice->Release();
+	if (m_d3dContext)	m_d3dContext->Release();
+	if (m_d3dSwapChain)	m_d3dSwapChain->Release();
+	if (m_d3dRenderTargetView)	m_d3dRenderTargetView->Release();
+
 	return 0;
 }
