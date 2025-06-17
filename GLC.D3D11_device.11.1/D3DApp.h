@@ -42,6 +42,9 @@ protected:
 	ComPtr<ID3D11Device>			m_d3dDevice				{};
 	ComPtr<ID3D11DeviceContext>		m_d3dContext			{};
 	ComPtr<IDXGISwapChain>			m_d3dSwapChain			{};
+	ComPtr<ID3D11Device1>			m_d3dDevice_1			{};
+	ComPtr<ID3D11DeviceContext1>	m_d3dContext_1			{};
+	ComPtr<IDXGISwapChain1>			m_d3dSwapChain_1		{};
 	ComPtr<ID3D11RenderTargetView>	m_d3dRenderTargetView	{};
 	ComPtr<ID3D11Texture2D>			m_d3dDepthStencil		{};
 	ComPtr<ID3D11DepthStencilView>	m_d3dDepthStencilView	{};
