@@ -4,9 +4,9 @@
 int main(int argc, char** argv)
 {
 	HINSTANCE hInst  = GetModuleHandle(nullptr);
-	D3DApp appMain;
-	D3DApp* pMain = &appMain;
-	pMain->Create(hInst);
+	auto pMain = D3DApp::getInstance();
+	if (FAILED(pMain->Create(hInst)))
+		return 0;
 	pMain->Run();
 	return 0;
 }
