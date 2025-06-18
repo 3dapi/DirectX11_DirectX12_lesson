@@ -43,7 +43,7 @@ protected:
 	DWORD				m_dWinStyle		{ APP_WIN_STYLE };
 	::SIZE				m_screenSize	{ 1280, 640 };			// HD Screen size width, height
 	bool				m_showCusor		{ true };				// Show Cusor
-	bool				m_bFullScreen	{ true };				// Full Screen mode
+	bool				m_bFullScreen	{ false };				// Full Screen mode
 	LRESULT MsgProc(HWND, UINT, WPARAM, LPARAM);
 	void				ToggleFullScreen();						// toggle full screen mode
 
