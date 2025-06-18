@@ -157,9 +157,16 @@ LRESULT D3DApp::MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 		}
 
+		case WM_SYSKEYDOWN:
+			if (wParam == VK_RETURN)
+			{
+				ToggleFullScreen();
+				return 0;
+			}
+			break;
+
 		case WM_KEYDOWN:
 		{
-
 			switch (wParam)
 			{
 				case VK_ESCAPE:
@@ -180,6 +187,12 @@ LRESULT D3DApp::MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	}
 
 	return ::DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+void D3DApp::ToggleFullScreen()
+{
+	m_bFullScreen ^= 1;
+	m_d3dSwapChain->SetFullscreenState(m_bFullScreen, {} );
 }
 
 int D3DApp::RenderApp()
@@ -268,6 +281,7 @@ int D3DApp::InitDevice()
 		{
 			hr = m_d3dSwapChain_1->QueryInterface(__uuidof(IDXGISwapChain), reinterpret_cast<void**>(&m_d3dSwapChain));
 		}
+		hr = m_d3dSwapChain->SetFullscreenState(m_bFullScreen, {});
 		G2::SAFE_RELEASE(dxgiFactory2);
 	}
 	else
@@ -282,7 +296,7 @@ int D3DApp::InitDevice()
 		descSwap.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 		descSwap.OutputWindow = m_hWnd;
 		descSwap.SampleDesc.Count = 1;
-		descSwap.Windowed = TRUE;
+		descSwap.Windowed = !m_bFullScreen;
 
 		hr = dxgiFactory->CreateSwapChain(m_d3dDevice, &descSwap, &m_d3dSwapChain);
 	}
