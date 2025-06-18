@@ -29,10 +29,10 @@ struct VS_OUT
 VS_OUT main_vtx( VS_IN vsi )
 {
     VS_OUT vso = (VS_OUT)0;
-    vso.pos = mul( vsi.pos, World );
-    vso.pos = mul( vso.pos, View );
-    vso.pos = mul( vso.pos, Projection );
-    vso.nor = mul( float4( vsi.nor, 1 ), World ).xyz;
+    vso.pos = mul( mtWld, vsi.pos);
+    vso.pos = mul( mtViw, vso.pos);
+    vso.pos = mul( mtPrj, vso.pos);
+    vso.nor = mul( mtWld, float4( vsi.nor, 1)).xyz;
     
     return vso;
 }

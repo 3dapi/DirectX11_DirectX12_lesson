@@ -2,10 +2,12 @@
 #ifndef _MainApp_H_
 #define _MainApp_H_
 
+#include <vector>
 #include <d3d11.h>
 #include <DirectxMath.h>
 
 using DirectX::XMMATRIX;
+using DirectX::XMFLOAT4;
 
 class MainApp
 {
@@ -18,13 +20,17 @@ protected:
 	int						m_bufVtxCount	{};
 	ID3D11Buffer*			m_bufIdx		{};
 	int						m_bufIdxCount	{};
-	ID3D11Buffer*           m_cnstWorld		{};
-	ID3D11Buffer*           m_cnstView		{};
-	ID3D11Buffer*           m_cnstProj		{};
+	ID3D11Buffer*			m_cnstWorld		{};
+	ID3D11Buffer*			m_cnstView		{};
+	ID3D11Buffer*			m_cnstProj		{};
+	ID3D11Buffer*			m_cnstLight		{};
 	XMMATRIX				m_mtView		{};
 	XMMATRIX				m_mtProj		{};
-	XMMATRIX				m_mtWorld1		{};
-	XMMATRIX				m_mtWorld2		{};
+	XMMATRIX				m_mtWorld		{};
+
+	std::vector<XMFLOAT4>	m_vecLightDir	;
+	std::vector<XMFLOAT4>	m_vecLightColor	;
+
 public:
 	MainApp();
 	virtual ~MainApp();
