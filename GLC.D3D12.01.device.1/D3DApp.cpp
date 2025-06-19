@@ -4,6 +4,8 @@
 
 #include <directxcolors.h>
 #include "D3DApp.h"
+#include "G2Util.h"
+#include "MainApp.h"
 
 D3DApp* D3DApp::m_pAppMain{};
 D3DApp::D3DApp()
@@ -25,9 +27,16 @@ D3DApp* D3DApp::getInstance()
 	return D3DApp::m_pAppMain;
 }
 
-int D3DApp::Create(HINSTANCE hInst)
+int D3DApp::Create(void* initialist)
 {
-	m_hInst = hInst;
+	if (initialist)
+	{
+		m_hInst = (HINSTANCE)initialist;
+	}
+	else
+	{
+		m_hInst = (HINSTANCE)GetModuleHandle(nullptr);
+	}
 
 	WNDCLASS wc =								// Register the window class
 	{
@@ -71,26 +80,50 @@ int D3DApp::Create(HINSTANCE hInst)
 	::UpdateWindow(m_hWnd);
 	::ShowCursor(m_showCusor);
 
-	auto ret = InitDevice();
-	if (FAILED(ret))	// Initialize the D3D device
+	if (FAILED(InitDevice()))	// Initialize the D3D device
 	{
-		Cleanup();
-		return ret;
+		goto END;
 	}
-
-	return ret;
+	if (FAILED(Init()))			// Initialize the main game
+	{
+		goto END;
+	}
+	return S_OK;
+END:
+	Cleanup();
+	return E_FAIL;
 }
 
+std::any D3DApp::GetAttrib(int nCmd)
+{
+	switch (nCmd)
+	{
+		case ATTRIB_CMD::ATTRIB_DEVICE:			return m_d3dDevice;
+		case ATTRIB_CMD::ATTRIB_CONTEXT:		return nullptr;
+		case ATTRIB_CMD::ATTRIB_SCREEN_SIZE:	return &m_screenSize;
+	}
+	return nullptr;
+}
+
+std::any D3DApp::GetDevice()
+{
+	return m_d3dDevice;
+}
+
+std::any D3DApp::GetContext()
+{
+	return nullptr;
+}
 
 void D3DApp::Cleanup()
 {
+	Destroy();
 	ReleaseDevice();
 	::DestroyWindow(m_hWnd);
 	::UnregisterClass(m_class.c_str(), m_hInst);
 	if (D3DApp::m_pAppMain)
 	{
-		delete D3DApp::m_pAppMain;
-		D3DApp::m_pAppMain = {};
+		G2::SAFE_DELETE(D3DApp::m_pAppMain);
 	}
 }
 
@@ -124,9 +157,16 @@ LRESULT D3DApp::MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 		}
 
+		case WM_SYSKEYDOWN:
+			if (wParam == VK_RETURN)
+			{
+				ToggleFullScreen();
+				return 0;
+			}
+			break;
+
 		case WM_KEYDOWN:
 		{
-
 			switch (wParam)
 			{
 				case VK_ESCAPE:
@@ -149,8 +189,20 @@ LRESULT D3DApp::MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return ::DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+void D3DApp::ToggleFullScreen()
+{
+	m_bFullScreen ^= 1;
+	//m_d3dSwapChain->SetFullscreenState(m_bFullScreen, {} );
+}
+
 int D3DApp::RenderApp()
 {
+	// update rendering data
+	Update();
+
+	// rendering
+	Render();
+
 	// Record all the commands we need to render the scene into the command list.
 	PopulateCommandList();
 
@@ -162,7 +214,6 @@ int D3DApp::RenderApp()
 	HRESULT hr = m_d3dSwapChain->Present(1, 0);
 
 	WaitForPreviousFrame();
-
 	return hr;
 }
 
@@ -217,7 +268,7 @@ int D3DApp::InitDevice()
 			break;
 		}
 	}
-	SAFE_RELEASE(pAdapter);
+	G2::SAFE_RELEASE(pAdapter);
 	if (!m_featureLevel)
 		return E_FAIL;
 
@@ -331,7 +382,7 @@ int D3DApp::ReleaseDevice()
 {
 	Destroy();
 
-	return 0;
+	return S_OK;
 }
 
 IDXGIAdapter* D3DApp::GetHardwareAdapter(IDXGIFactory1* pFactory, bool requestHighPerformanceAdapter)
@@ -461,5 +512,36 @@ HRESULT D3DApp::WaitForPreviousFrame()
 	}
 
 	m_d3dFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
+	return S_OK;
+}
+
+int D3DApp::Init()
+{
+	m_pmain = new class MainApp;
+	if (!m_pmain)
+		return E_FAIL;
+	if (FAILED(m_pmain->Init()))
+	{
+		G2::SAFE_DELETE(m_pmain);
+		return E_FAIL;
+	}
+	return S_OK;
+}
+int D3DApp::Destroy()
+{
+	G2::SAFE_DELETE(m_pmain);
+	return S_OK;
+}
+int D3DApp::Update()
+{
+	if (m_pmain)
+		m_pmain->Update();
+
+	return S_OK;
+}
+int D3DApp::Render()
+{
+	if(m_pmain)
+		m_pmain->Render();
 	return S_OK;
 }

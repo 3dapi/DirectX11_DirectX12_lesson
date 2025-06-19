@@ -13,58 +13,26 @@
 #include <dxgi1_6.h>
 #include <D3Dcompiler.h>
 #include <DirectXMath.h>
-
 #include <wrl.h>
+#include "G2Base.h"
 
 using Microsoft::WRL::ComPtr;
 
 
-template<typename T>
-inline void SAFE_RELEASE(T*& p)
-{
-	if (p)
-	{
-		p->Release();
-		p = {};
-	}
-}
-// NOTE: for new T*[count] raw pointer array
-template<typename T>
-inline void SAFE_RELEASE_ARRAY(T*& pArray, size_t count)
-{
-	if (pArray)
-	{
-		for (size_t i = 0; i < count; ++i)
-		{
-			if (pArray[i])
-				pArray[i]->Release();
-		}
-		delete[] pArray;
-		pArray = nullptr;
-	}
-}
-// NOTE: for std::vector 
-template<typename T>
-inline void SAFE_RELEASE_VECTOR(std::vector<T*>& vec) {
-	for (auto& p : vec) {
-		if (p) {
-			p->Release();
-			p = nullptr;
-		}
-	}
-	vec.clear();
-}
-
 #define APP_WIN_STYLE (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE)
 
-class D3DApp
+class D3DApp : public IG2GraphicsD3D
 {
 public:
+	int			Create(void* initialist) override;
+	int			Run() override;
+	std::any	GetAttrib(int nCmd) override;
+	std::any	GetDevice() override;
+	std::any	GetContext() override;
+
 	static D3DApp*	getInstance();								// sigleton
-	int		Create(HINSTANCE hInst);
-	int		Run();
-	void	Cleanup();
-	int		RenderApp();
+	void			Cleanup();
+	int				RenderApp();
 	static	LRESULT WINAPI WndProc(HWND, UINT, WPARAM, LPARAM);	// window proc function
 
 	// window settings
@@ -76,10 +44,11 @@ protected:
 	HINSTANCE			m_hInst			{};						//
 	HWND				m_hWnd			{};
 	DWORD				m_dWinStyle		{ APP_WIN_STYLE };
-	::SIZE				m_screenSize	{ 1280, 720 };			// HD Screen size width, height
+	::SIZE				m_screenSize	{ 1280, 640 };			// HD Screen size width, height
 	bool				m_showCusor		{ true };				// Show Cusor
-	bool				m_bWindow		{ true };				// Window mode
+	bool				m_bFullScreen	{ false };				// Full Screen mode
 	LRESULT MsgProc(HWND, UINT, WPARAM, LPARAM);
+	void				ToggleFullScreen();						// toggle full screen mode
 
 	// device and context
 protected:
@@ -111,10 +80,12 @@ protected:
 	// for driven class
 public:
 	HWND GetHwnd() const	{ return m_hWnd; }
-	virtual int Init()		{ return S_OK; }
-	virtual int Destroy()	{ return S_OK; }
-	virtual int Update()	{ return S_OK; }
-	virtual int Render()	{ return S_OK; }
+	virtual int Init()		;
+	virtual int Destroy()	;
+	virtual int Update()	;
+	virtual int Render()	;
+
+	class MainApp* m_pmain{};
 };
 
 #endif

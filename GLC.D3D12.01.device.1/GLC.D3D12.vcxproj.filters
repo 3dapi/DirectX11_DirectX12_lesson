@@ -21,9 +21,33 @@
     <ClCompile Include="D3DApp.cpp">
       <Filter>s</Filter>
     </ClCompile>
+    <ClCompile Include="MainApp.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="G2Util.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="G2Base.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="DDSTextureLoader.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3DApp.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="MainApp.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="G2Util.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="G2Base.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="DDSTextureLoader.h">
       <Filter>h</Filter>
     </ClInclude>
   </ItemGroup>

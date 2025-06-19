@@ -126,10 +126,18 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="D3DApp.cpp" />
+    <ClCompile Include="DDSTextureLoader.cpp" />
+    <ClCompile Include="G2Util.cpp" />
+    <ClCompile Include="G2Base.cpp" />
+    <ClCompile Include="MainApp.cpp" />
     <ClCompile Include="_main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3DApp.h" />
+    <ClInclude Include="DDSTextureLoader.h" />
+    <ClInclude Include="G2Util.h" />
+    <ClInclude Include="G2Base.h" />
+    <ClInclude Include="MainApp.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
