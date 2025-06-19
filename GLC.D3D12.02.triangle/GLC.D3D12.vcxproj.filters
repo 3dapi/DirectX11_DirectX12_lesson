@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="h">
+      <UniqueIdentifier>{F26A2BC4-8DEC-40D1-B5C5-AB0AB6F13F7C}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="s">
+      <UniqueIdentifier>{FD5D9466-8272-4D91-8EDA-6D30722CCA3E}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="r">
+      <UniqueIdentifier>{19B0CD09-11BE-49EF-95AA-982CA02BEA64}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="assets">
+      <UniqueIdentifier>{dadcb4ac-a24e-4ff4-a795-961a26e4291c}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="_main.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="D3DApp.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="MainApp.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="G2Util.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="G2Base.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="DDSTextureLoader.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D3DApp.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="MainApp.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="G2Util.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="G2Base.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="DDSTextureLoader.h">
+      <Filter>h</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="assets\simple.hlsl">
+      <Filter>assets</Filter>
+    </FxCompile>
+  </ItemGroup>
+</Project>
