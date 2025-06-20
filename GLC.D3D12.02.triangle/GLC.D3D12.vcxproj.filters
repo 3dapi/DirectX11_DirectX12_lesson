@@ -14,7 +14,7 @@
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
     <Filter Include="assets">
-      <UniqueIdentifier>{dadcb4ac-a24e-4ff4-a795-961a26e4291c}</UniqueIdentifier>
+      <UniqueIdentifier>{b112fd4e-6233-46b8-bb0a-4910ec44a13a}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -24,16 +24,16 @@
     <ClCompile Include="D3DApp.cpp">
       <Filter>s</Filter>
     </ClCompile>
-    <ClCompile Include="MainApp.cpp">
-      <Filter>s</Filter>
-    </ClCompile>
-    <ClCompile Include="G2Util.cpp">
+    <ClCompile Include="DDSTextureLoader.cpp">
       <Filter>s</Filter>
     </ClCompile>
     <ClCompile Include="G2Base.cpp">
       <Filter>s</Filter>
     </ClCompile>
-    <ClCompile Include="DDSTextureLoader.cpp">
+    <ClCompile Include="G2Util.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="MainApp.cpp">
       <Filter>s</Filter>
     </ClCompile>
   </ItemGroup>
@@ -41,16 +41,16 @@
     <ClInclude Include="D3DApp.h">
       <Filter>h</Filter>
     </ClInclude>
-    <ClInclude Include="MainApp.h">
-      <Filter>h</Filter>
-    </ClInclude>
-    <ClInclude Include="G2Util.h">
+    <ClInclude Include="DDSTextureLoader.h">
       <Filter>h</Filter>
     </ClInclude>
     <ClInclude Include="G2Base.h">
       <Filter>h</Filter>
     </ClInclude>
-    <ClInclude Include="DDSTextureLoader.h">
+    <ClInclude Include="G2Util.h">
+      <Filter>h</Filter>
+    </ClInclude>
+    <ClInclude Include="MainApp.h">
       <Filter>h</Filter>
     </ClInclude>
   </ItemGroup>

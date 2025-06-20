@@ -115,9 +115,18 @@ std::any D3DApp::GetContext()
 	return nullptr;
 }
 
+std::any D3DApp::GetRootSignature()
+{
+	return m_d3dRootSignature.Get();
+}
+
+std::any D3DApp::GetCommandList()
+{
+	return m_d3dCommandList.Get();
+}
+
 void D3DApp::Cleanup()
 {
-	Destroy();
 	ReleaseDevice();
 	::DestroyWindow(m_hWnd);
 	::UnregisterClass(m_class.c_str(), m_hInst);
@@ -200,9 +209,6 @@ int D3DApp::RenderApp()
 	// update rendering data
 	Update();
 
-	// rendering
-	Render();
-
 	// Record all the commands we need to render the scene into the command list.
 	PopulateCommandList();
 
@@ -221,6 +227,9 @@ int D3DApp::RenderApp()
 int D3DApp::InitDevice()
 {
 	HRESULT hr = S_OK;
+	m_d3dViewport    = { 0.0F, 0.0F, (float)(m_screenSize.cx), (float)(m_screenSize.cy)};
+	m_d3dScissorRect = { 0, 0, (LONG)(m_screenSize.cx), (LONG)(m_screenSize.cy) };
+
 	UINT dxgiFactoryFlags = 0;
 #ifdef _DEBUG
 	// Enable the debug layer (requires the Graphics Tools "optional feature").
@@ -272,6 +281,19 @@ int D3DApp::InitDevice()
 	if (!m_featureLevel)
 		return E_FAIL;
 
+	// 1.1 Create an empty root signature.
+	{
+		D3D12_ROOT_SIGNATURE_DESC rsDesc{};
+		rsDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+		ComPtr<ID3DBlob> signature;
+		ComPtr<ID3DBlob> error;
+		hr = D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+		if (FAILED(hr))
+			return hr;
+		hr = m_d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_d3dRootSignature));
+		if (FAILED(hr))
+			return hr;
+	}
 
 	// 2. create command queue
 	// Describe and create the command queue.
@@ -285,22 +307,22 @@ int D3DApp::InitDevice()
 	// 3 create swapchain
 	// Describe and create the swap chain.
 	DXGI_SWAP_CHAIN_DESC1 descSwap = {};
-	descSwap.BufferCount = FRAME_COUNT;
-	descSwap.Width       = m_screenSize.cx;
-	descSwap.Height      = m_screenSize.cy;
-	descSwap.Format      = DXGI_FORMAT_R8G8B8A8_UNORM;
-	descSwap.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	descSwap.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	descSwap.SampleDesc.Count = 1;
+		descSwap.BufferCount = FRAME_BUFFER_COUNT;
+		descSwap.Width       = m_screenSize.cx;
+		descSwap.Height      = m_screenSize.cy;
+		descSwap.Format      = DXGI_FORMAT_R8G8B8A8_UNORM;
+		descSwap.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+		descSwap.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+		descSwap.SampleDesc.Count = 1;
 
-	ComPtr<IDXGISwapChain1> swapChain;
 	hr = factory->CreateSwapChainForHwnd(
 		m_d3dCommandQueue.Get(),        // Swap chain needs the queue so that it can force a flush on it.
 		GetHwnd(),
 		&descSwap,
 		nullptr,
 		nullptr,
-		&swapChain);
+		(IDXGISwapChain1**)m_d3dSwapChain.GetAddressOf()
+	);
 	if (FAILED(hr))
 		return hr;
 
@@ -309,19 +331,14 @@ int D3DApp::InitDevice()
 	if (FAILED(hr))
 		return hr;
 
-	// setup d3dSwapchain
-	hr = swapChain.As(&m_d3dSwapChain);
-	if (FAILED(hr))
-		return hr;
-
 	// 4. setup frame Index
-	m_d3dFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
+	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
 
 	// 5. Create descriptor heaps.
 	{
 		// Describe and create a render target view (RTV) descriptor heap.
 		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-		rtvHeapDesc.NumDescriptors = FRAME_COUNT;
+		rtvHeapDesc.NumDescriptors = FRAME_BUFFER_COUNT;
 		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		hr = m_d3dDevice->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_d3dDescHeap));
@@ -334,7 +351,7 @@ int D3DApp::InitDevice()
 	{
 		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_d3dDescHeap->GetCPUDescriptorHandleForHeapStart();
 		// Create a RTV for each frame.
-		for (UINT n = 0; n < FRAME_COUNT; n++)
+		for (UINT n = 0; n < FRAME_BUFFER_COUNT; n++)
 		{
 			hr = m_d3dSwapChain->GetBuffer(n, IID_PPV_ARGS(&m_d3dRenderTarget[n]));
 			if (FAILED(hr))
@@ -380,8 +397,24 @@ int D3DApp::InitDevice()
 
 int D3DApp::ReleaseDevice()
 {
+	WaitForPreviousFrame();
+
 	Destroy();
 
+	CloseHandle(m_fenceEvent);
+
+	m_fence				.Reset();
+	m_d3dCommandQueue	.Reset();
+	m_d3dDescHeap		.Reset();
+	for(int i=0; i<FRAME_BUFFER_COUNT; ++i)
+	{
+		m_d3dRenderTarget[i].Reset();
+	}
+	m_d3dCommandAllocator	.Reset();
+	m_d3dPipelineState		.Reset();
+	m_d3dCommandList		.Reset();
+	m_d3dSwapChain			.Reset();
+	G2::SAFE_RELEASE(m_d3dDevice);
 	return S_OK;
 }
 
@@ -459,7 +492,7 @@ HRESULT D3DApp::PopulateCommandList()
 	D3D12_RESOURCE_BARRIER barrier = {};
 	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = m_d3dRenderTarget[m_d3dFrameIndex].Get();
+	barrier.Transition.pResource = m_d3dRenderTarget[m_d3dCurrentFrameIndex].Get();
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
 	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -468,11 +501,20 @@ HRESULT D3DApp::PopulateCommandList()
 
 	// --- 2. 렌더 타겟 핸들 설정 ---
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_d3dDescHeap->GetCPUDescriptorHandleForHeapStart();
-	rtvHandle.ptr += static_cast<SIZE_T>(m_d3dFrameIndex) * static_cast<SIZE_T>(m_d3dDescriptorSize);
+	rtvHandle.ptr += static_cast<SIZE_T>(m_d3dCurrentFrameIndex) * static_cast<SIZE_T>(m_d3dDescriptorSize);
+	m_d3dCommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+	m_d3dCommandList->SetGraphicsRootSignature(m_d3dRootSignature.Get());
 
 	// --- 3. 렌더 타겟 클리어 ---
 	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	m_d3dCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+	m_d3dCommandList->RSSetViewports(1, &m_d3dViewport);
+	m_d3dCommandList->RSSetScissorRects(1, &m_d3dScissorRect);
+
+	//
+	Render();
+	//
 
 	// --- 4. 리소스 상태 전환: RenderTarget → Present ---
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -511,7 +553,7 @@ HRESULT D3DApp::WaitForPreviousFrame()
 		WaitForSingleObject(m_fenceEvent, INFINITE);
 	}
 
-	m_d3dFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
+	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
 	return S_OK;
 }
 

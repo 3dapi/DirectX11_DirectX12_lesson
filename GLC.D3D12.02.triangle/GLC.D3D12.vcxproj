@@ -127,20 +127,23 @@
   <ItemGroup>
     <ClCompile Include="D3DApp.cpp" />
     <ClCompile Include="DDSTextureLoader.cpp" />
-    <ClCompile Include="G2Util.cpp" />
     <ClCompile Include="G2Base.cpp" />
+    <ClCompile Include="G2Util.cpp" />
     <ClCompile Include="MainApp.cpp" />
     <ClCompile Include="_main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3DApp.h" />
     <ClInclude Include="DDSTextureLoader.h" />
-    <ClInclude Include="G2Util.h" />
     <ClInclude Include="G2Base.h" />
+    <ClInclude Include="G2Util.h" />
     <ClInclude Include="MainApp.h" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="assets\simple.hlsl" />
+    <FxCompile Include="assets\simple.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

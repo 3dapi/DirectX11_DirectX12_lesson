@@ -15,7 +15,6 @@
 #include <DirectXMath.h>
 #include <wrl.h>
 #include "G2Base.h"
-
 using Microsoft::WRL::ComPtr;
 
 
@@ -24,11 +23,13 @@ using Microsoft::WRL::ComPtr;
 class D3DApp : public IG2GraphicsD3D
 {
 public:
-	int			Create(void* initialist) override;
-	int			Run() override;
-	std::any	GetAttrib(int nCmd) override;
-	std::any	GetDevice() override;
-	std::any	GetContext() override;
+	int			Create(void* initialist)		override;
+	int			Run()							override;
+	std::any	GetAttrib(int nCmd)				override;
+	std::any	GetDevice()						override;
+	std::any	GetContext()					override;
+	std::any	GetRootSignature()				override;
+	std::any	GetCommandList()				override;
 
 	static D3DApp*	getInstance();								// sigleton
 	void			Cleanup();
@@ -52,21 +53,25 @@ protected:
 
 	// device and context
 protected:
-	static const UINT FRAME_COUNT = 2;
+	static const UINT FRAME_BUFFER_COUNT = 2;
 	bool								m_useHardware	{true};
 	D3D_FEATURE_LEVEL                   m_featureLevel	{};
 
 	// Pipeline objects.
-	ComPtr<ID3D12Device>				m_d3dDevice				;
-	ComPtr<ID3D12CommandQueue>			m_d3dCommandQueue		;
-	ComPtr<IDXGISwapChain3>				m_d3dSwapChain			;
-	UINT								m_d3dFrameIndex			{};
+	ID3D12Device*						m_d3dDevice				{};
+	ComPtr<IDXGISwapChain3>				m_d3dSwapChain			{};
+	ComPtr<ID3D12CommandQueue>			m_d3dCommandQueue		{};
+	UINT								m_d3dCurrentFrameIndex	{};
 	UINT								m_d3dDescriptorSize		{};
-	ComPtr<ID3D12DescriptorHeap>        m_d3dDescHeap			;
-	ComPtr<ID3D12Resource>				m_d3dRenderTarget		[FRAME_COUNT];
-	ComPtr<ID3D12CommandAllocator>		m_d3dCommandAllocator	;
-	ComPtr<ID3D12PipelineState>			m_d3dPipelineState		;
-	ComPtr<ID3D12GraphicsCommandList>	m_d3dCommandList		;
+	ComPtr<ID3D12DescriptorHeap>        m_d3dDescHeap			{};
+	ComPtr<ID3D12Resource>				m_d3dRenderTarget		[FRAME_BUFFER_COUNT];
+	ComPtr<ID3D12RootSignature>			m_d3dRootSignature		{};
+	ComPtr<ID3D12PipelineState>			m_d3dPipelineState		{};
+	ComPtr<ID3D12CommandAllocator>		m_d3dCommandAllocator	{};
+	ComPtr<ID3D12GraphicsCommandList>	m_d3dCommandList		{};
+
+	D3D12_VIEWPORT						m_d3dViewport			{};
+	D3D12_RECT							m_d3dScissorRect		{};
 
 	// Synchronization objects.
 	HANDLE								m_fenceEvent	{};
