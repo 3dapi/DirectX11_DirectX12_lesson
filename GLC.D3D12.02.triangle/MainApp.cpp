@@ -19,7 +19,7 @@ using namespace DirectX;
 struct Vertex
 {
 	XMFLOAT3 p;
-	XMFLOAT4 d;
+	uint8_t d[4];
 };
 
 MainApp::MainApp()
@@ -37,9 +37,8 @@ int MainApp::Init()
 	auto d3dDevice        = std::any_cast<ID3D12Device*			>(IG2GraphicsD3D::getInstance()->GetDevice());
 	auto d3dRootSignature = std::any_cast<ID3D12RootSignature*	>(IG2GraphicsD3D::getInstance()->GetRootSignature());
 	{
-		ComPtr<ID3DBlob> shaderVtx{};
-		ComPtr<ID3DBlob> shaderPxl{};
-		hr = G2::DXCompileShaderFromFile("assets/simple.hlsl", "main_vx", "vs_5_0", &shaderVtx);
+		ComPtr<ID3DBlob> shaderVtx{}, shaderPxl{};
+		hr = G2::DXCompileShaderFromFile("assets/simple.hlsl", "main_vs", "vs_5_0", &shaderVtx);
 		if (FAILED(hr))
 			return hr;
 		hr = G2::DXCompileShaderFromFile("assets/simple.hlsl", "main_ps", "ps_5_0", &shaderPxl);
@@ -49,27 +48,10 @@ int MainApp::Init()
 		D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 		{
 			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+			{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 0+sizeof(XMFLOAT3), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 		};
 
 		// Describe and create the graphics pipeline state object (PSO).
-		// Describe and create the graphics pipeline state object (PSO).
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-			psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
-			psoDesc.pRootSignature = d3dRootSignature;
-			psoDesc.VS.pShaderBytecode = shaderVtx.Get()->GetBufferPointer();
-			psoDesc.VS.BytecodeLength = shaderVtx.Get()->GetBufferSize();
-			psoDesc.PS.pShaderBytecode = shaderPxl.Get()->GetBufferPointer();
-			psoDesc.PS.BytecodeLength = shaderPxl.Get()->GetBufferSize();
-			psoDesc.DepthStencilState.DepthEnable = FALSE;
-			psoDesc.DepthStencilState.StencilEnable = FALSE;
-			psoDesc.SampleMask = UINT_MAX;
-			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-			psoDesc.NumRenderTargets = 1;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-			psoDesc.SampleDesc.Count = 1;
-
-
 		D3D12_RASTERIZER_DESC rasterDesc = {};
 			rasterDesc.FillMode = D3D12_FILL_MODE_SOLID;
 			rasterDesc.CullMode = D3D12_CULL_MODE_BACK;
@@ -82,7 +64,7 @@ int MainApp::Init()
 			rasterDesc.AntialiasedLineEnable = FALSE;
 			rasterDesc.ForcedSampleCount = 0;
 			rasterDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-		psoDesc.RasterizerState = rasterDesc;
+
 
 		D3D12_BLEND_DESC blendDesc = {};
 			blendDesc.AlphaToCoverageEnable = FALSE;
@@ -98,7 +80,22 @@ int MainApp::Init()
 			{
 				blendDesc.RenderTarget[i] = defaultRenderTargetBlendDesc;
 			}
-		psoDesc.BlendState = blendDesc;
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+			psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+			psoDesc.pRootSignature = d3dRootSignature;
+			psoDesc.BlendState = blendDesc;
+			psoDesc.RasterizerState = rasterDesc;
+			psoDesc.VS.pShaderBytecode = shaderVtx.Get()->GetBufferPointer();
+			psoDesc.VS.BytecodeLength = shaderVtx.Get()->GetBufferSize();
+			psoDesc.PS.pShaderBytecode = shaderPxl.Get()->GetBufferPointer();
+			psoDesc.PS.BytecodeLength = shaderPxl.Get()->GetBufferSize();
+			psoDesc.DepthStencilState.DepthEnable = FALSE;
+			psoDesc.DepthStencilState.StencilEnable = FALSE;
+			psoDesc.SampleMask = UINT_MAX;
+			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			psoDesc.NumRenderTargets = 1;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.SampleDesc.Count = 1;
 
 		hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
 		if (FAILED(hr))
@@ -149,10 +146,10 @@ int MainApp::Init()
 		float aspectRatio = screenSize->cx / (float)(screenSize->cy);
 		// D3D12_HEAP_TYPE_UPLOAD: CPU -> GPU라 가능
 		Vertex* pCur = reinterpret_cast<Vertex*>(pVertexDataBegin);
-		*pCur++ = { { -0.25f,  0.25f * aspectRatio, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } };
-		*pCur++ = { {  0.25f,  0.25f * aspectRatio, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } };
-		*pCur++ = { {  0.25f, -0.25f * aspectRatio, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } };
-		*pCur++ = { { -0.25f, -0.25f * aspectRatio, 0.0f }, { 0.0f, 0.5f, 0.5f, 1.0f } };
+		*pCur++ = { { -0.25f,  0.25f * aspectRatio, 0.0f }, {   0,   0, 255, 255 } };
+		*pCur++ = { {  0.25f,  0.25f * aspectRatio, 0.0f }, { 255,   0,   0, 255 } };
+		*pCur++ = { {  0.25f, -0.25f * aspectRatio, 0.0f }, {   0, 255,   0, 255 } };
+		*pCur++ = { { -0.25f, -0.25f * aspectRatio, 0.0f }, {   0, 128, 128, 255 } };
 
 		// Unmap은 안해도 됨
 		//hr = m_rscVtx->Unmap(0, nullptr);
