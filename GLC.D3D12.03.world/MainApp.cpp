@@ -79,75 +79,44 @@ int MainApp::Update()
 
 int MainApp::Render()
 {
-	HRESULT hr = S_OK;
-	auto d3dDevice         = std::any_cast<ID3D12Device*          >(IG2GraphicsD3D::getInstance()->GetDevice());
-	auto commandQue        = std::any_cast<ID3D12CommandQueue*    >(IG2GraphicsD3D::getInstance()->GetCommandQueue());
-	auto commandAlloc      = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
-	auto currentFrameIndex = std::any_cast<int                    >(IG2GraphicsD3D::getInstance()->GetCurrentFrameIndex());
-	auto renderTarget      = std::any_cast<ID3D12Resource*        >(IG2GraphicsD3D::getInstance()->GetRenderTarget());
+    HRESULT hr = S_OK;
+    auto cmdList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 
-	CD3DX12_RESOURCE_BARRIER barrier_begin = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
-	CD3DX12_RESOURCE_BARRIER barrier_end   = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    // 디스크립터 힙 설정
+    ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
+    cmdList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
 
-	hr = commandAlloc->Reset();
-	hr = m_commandList->Reset(commandAlloc, nullptr);  // ✅ PSO 없이 Reset (여러 개 설정 예정)
+    // 렌더 패스별 루프
+    //for (const auto& pass : m_renderPasses)
+    {
+		cmdList->SetPipelineState(m_pipelineState.Get());
+		cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+		cmdList->SetGraphicsRootDescriptorTable(0, gpuHandle);
 
-	{
-		// 기본 렌더링 세팅
-		m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
-		ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
-		m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
+		cmdList->IASetIndexBuffer(&m_viewIdx);
+		cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+    }
 
-		CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), currentFrameIndex, m_d3dDescriptorSize);
-		m_commandList->SetGraphicsRootDescriptorTable(0, gpuHandle);
-
-		D3D12_VIEWPORT* viewport = std::any_cast<D3D12_VIEWPORT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_VIEWPORT));
-		D3D12_RECT*     rcScissor= std::any_cast<D3D12_RECT*    >(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_SCISSOR_RECT));
-		m_commandList->RSSetViewports(1, viewport);
-		m_commandList->RSSetScissorRects(1, rcScissor);
-
-		// 리소스 상태 전환
-		m_commandList->ResourceBarrier(1, &barrier_begin);
-
-		// 클리어
-		auto renderTargetView = std::any_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(IG2GraphicsD3D::getInstance()->GetRenderTargetView());
-		auto depthStencilView = std::any_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(IG2GraphicsD3D::getInstance()->GetDepthStencilView());
-		float cornflowerBlue[] = { 0.0f, 0.4f, 0.6f, 1.0f };
-
-		m_commandList->ClearRenderTargetView(renderTargetView, cornflowerBlue, 0, nullptr);
-		m_commandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-		m_commandList->OMSetRenderTargets(1, &renderTargetView, false, &depthStencilView);
-
-		// ✅ 첫 번째 파이프라인 상태 설정 및 드로우
-		m_commandList->SetPipelineState(m_pipelineState.Get());
-		m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		m_commandList->IASetVertexBuffers(0, 1, &m_viewVtx);
-		m_commandList->IASetIndexBuffer(&m_viewIdx);
-		m_commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
-
-		//// ✅ 두 번째 파이프라인 상태 설정 및 드로우
-		//m_commandList->SetPipelineState(m_pipelineState2.Get());
-		//// 필요하다면 다른 VB/IB도 설정 가능
-		//m_commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
-
-		// ✅ 마지막으로 Present 전환
-		m_commandList->ResourceBarrier(1, &barrier_end);
-	}
-
-	hr = m_commandList->Close();
-	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-	commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-	return S_OK;
+    return S_OK;
 }
-
-
 
 
 int MainApp::InitResource()
 {
 	HRESULT hr = S_OK;
-	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto d3dDevice      = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto commandAlloc   = std::any_cast<ID3D12CommandAllocator*  >(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
+	auto commandList    = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+
+    hr = commandAlloc->Reset();
+	if (FAILED(hr))
+		return hr;
+    hr = commandList->Reset(commandAlloc, nullptr);  // PSO는 루프 내에서 설정 예정
+	if (FAILED(hr))
+		return hr;
 
 	// Create a root signature with a single constant buffer slot.
 	{
@@ -233,10 +202,6 @@ int MainApp::InitResource()
 
 	// Create and upload cube geometry resources to the GPU.
 	{
-		auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
-		hr = d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAlloc, nullptr, IID_PPV_ARGS(&m_commandList));
-		if (FAILED(hr))
-			return hr;
 		// Cube vertices. Each vertex has a position and a color.
 		Vertex cubeVertices[] =
 		{
@@ -274,11 +239,10 @@ int MainApp::InitResource()
 			vertexData.RowPitch = vertexBufferSize;
 			vertexData.SlicePitch = vertexData.RowPitch;
 
-			UpdateSubresources(m_commandList.Get(), m_rscVtx.Get(), vertexBufferUpload.Get(), 0, 0, 1, &vertexData);
+			UpdateSubresources(commandList, m_rscVtx.Get(), vertexBufferUpload.Get(), 0, 0, 1, &vertexData);
 
-			CD3DX12_RESOURCE_BARRIER vertexBufferResourceBarrier =
-				CD3DX12_RESOURCE_BARRIER::Transition(m_rscVtx.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-			m_commandList->ResourceBarrier(1, &vertexBufferResourceBarrier);
+			CD3DX12_RESOURCE_BARRIER vertexBufferResourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_rscVtx.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+			commandList->ResourceBarrier(1, &vertexBufferResourceBarrier);
 		}
 
 		unsigned short indices[] =
@@ -310,10 +274,10 @@ int MainApp::InitResource()
 			indexData.RowPitch = indexBufferSize;
 			indexData.SlicePitch = indexData.RowPitch;
 
-			UpdateSubresources(m_commandList.Get(), m_rscIdx.Get(), indexBufferUpload.Get(), 0, 0, 1, &indexData);
+			UpdateSubresources(commandList, m_rscIdx.Get(), indexBufferUpload.Get(), 0, 0, 1, &indexData);
 
 			CD3DX12_RESOURCE_BARRIER indexBufferResourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_rscIdx.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-			m_commandList->ResourceBarrier(1, &indexBufferResourceBarrier);
+			commandList->ResourceBarrier(1, &indexBufferResourceBarrier);
 		}
 
 		// Create a descriptor heap for the constant buffers.
@@ -353,11 +317,11 @@ int MainApp::InitResource()
 			return hr;
 
 		// Close the command list and execute it to begin the vertex/index buffer copy into the GPU's default heap.
-		hr = m_commandList->Close();
+		hr = commandList->Close();
 		if (FAILED(hr))
 			return hr;
 
-		ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+		ID3D12CommandList* ppCommandLists[] = { commandList };
 
 		auto commandQue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
 		commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);

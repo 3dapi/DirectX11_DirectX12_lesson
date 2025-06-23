@@ -53,7 +53,6 @@ protected:
 
 
 	// Direct3D resources for cube geometry.
-	ComPtr<ID3D12GraphicsCommandList>		m_commandList;
 	ComPtr<ID3D12DescriptorHeap>			m_cbvHeap;
 	ComPtr<ID3D12RootSignature>				m_rootSignature;
 	ComPtr<ID3D12PipelineState>				m_pipelineState;

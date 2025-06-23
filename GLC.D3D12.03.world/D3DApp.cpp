@@ -244,10 +244,51 @@ int D3DApp::RenderApp()
 	Update();
 
 
+	HRESULT hr = S_OK;
+	auto d3dDevice         = std::any_cast<ID3D12Device*            >(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto commandQue        = std::any_cast<ID3D12CommandQueue*      >(IG2GraphicsD3D::getInstance()->GetCommandQueue());
+	auto commandAlloc      = std::any_cast<ID3D12CommandAllocator*  >(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
+	auto currentFrameIndex = std::any_cast<int                      >(IG2GraphicsD3D::getInstance()->GetCurrentFrameIndex());
+	auto renderTarget      = std::any_cast<ID3D12Resource*          >(IG2GraphicsD3D::getInstance()->GetRenderTarget());
+
+	CD3DX12_RESOURCE_BARRIER barrier_begin = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	CD3DX12_RESOURCE_BARRIER barrier_end = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+
+
+    hr = commandAlloc->Reset();
+    hr = m_d3dCommandList->Reset(commandAlloc, nullptr);  // PSO는 루프 내에서 설정 예정
+
+    // 뷰포트, 시저, 렌더타겟 뷰/DSV
+    D3D12_VIEWPORT* viewport = std::any_cast<D3D12_VIEWPORT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_VIEWPORT));
+    D3D12_RECT*     rcScissor= std::any_cast<D3D12_RECT*    >(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_SCISSOR_RECT));
+    auto renderTargetView    = std::any_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(IG2GraphicsD3D::getInstance()->GetRenderTargetView());
+    auto depthStencilView    = std::any_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(IG2GraphicsD3D::getInstance()->GetDepthStencilView());
+
+    // 상태 전환: Present → RenderTarget
+    m_d3dCommandList->ResourceBarrier(1, &barrier_begin);
+
+    // Clear
+    float clearColor[] = { 0.0f, 0.4f, 0.6f, 1.0f };
+    m_d3dCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
+    m_d3dCommandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+    // 타겟 설정, 뷰포트 설정
+    m_d3dCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &depthStencilView);
+    m_d3dCommandList->RSSetViewports(1, viewport);
+    m_d3dCommandList->RSSetScissorRects(1, rcScissor);
+
 	Render();
 
+    // 상태 전환: RenderTarget → Present
+    m_d3dCommandList->ResourceBarrier(1, &barrier_end);
 
-	HRESULT hr = m_d3dSwapChain->Present(1, 0);
+    hr = m_d3dCommandList->Close();
+
+    ID3D12CommandList* ppCommandLists[] = { m_d3dCommandList.Get() };
+    commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+
+	hr = m_d3dSwapChain->Present(1, 0);
 
 	WaitForGpu();
 	MoveToNextFrame();
