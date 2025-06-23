@@ -243,6 +243,7 @@ int D3DApp::RenderApp()
 {
 	Update();
 
+
 	Render();
 
 
@@ -378,9 +379,9 @@ int D3DApp::InitDevice()
 			return hr;
 
 		D3D12_DESCRIPTOR_HEAP_DESC descDepthStencilHeap{};
-		descDepthStencilHeap.NumDescriptors = 1;
-		descDepthStencilHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-		descDepthStencilHeap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+			descDepthStencilHeap.NumDescriptors = 1;
+			descDepthStencilHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+			descDepthStencilHeap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		hr = m_d3dDevice->CreateDescriptorHeap(&descDepthStencilHeap, IID_PPV_ARGS(&m_d3dDescDepth));
 		if (FAILED(hr))
 			return hr;

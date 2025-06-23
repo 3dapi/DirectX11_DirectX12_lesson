@@ -86,57 +86,61 @@ int MainApp::Render()
 	auto currentFrameIndex = std::any_cast<int                    >(IG2GraphicsD3D::getInstance()->GetCurrentFrameIndex());
 	auto renderTarget      = std::any_cast<ID3D12Resource*        >(IG2GraphicsD3D::getInstance()->GetRenderTarget());
 
-	hr = commandAlloc->Reset();
+	CD3DX12_RESOURCE_BARRIER barrier_begin = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
+	CD3DX12_RESOURCE_BARRIER barrier_end   = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
-	// The command list can be reset anytime after ExecuteCommandList() is called.
-	hr = m_commandList->Reset(commandAlloc, m_pipelineState.Get());
+	hr = commandAlloc->Reset();
+	hr = m_commandList->Reset(commandAlloc, nullptr);  // ✅ PSO 없이 Reset (여러 개 설정 예정)
 
 	{
-		// Set the graphics root signature and descriptor heaps to be used by this frame.
+		// 기본 렌더링 세팅
 		m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 		ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
 		m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-		// Bind the current frame's constant buffer to the pipeline.
 		CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), currentFrameIndex, m_d3dDescriptorSize);
 		m_commandList->SetGraphicsRootDescriptorTable(0, gpuHandle);
 
-		// Set the viewport and scissor rectangle.
-		D3D12_VIEWPORT viewport = *std::any_cast<D3D12_VIEWPORT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_VIEWPORT));
-		D3D12_RECT     rcScissor= *std::any_cast<D3D12_RECT*    >(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_SCISSOR_RECT));
-		m_commandList->RSSetViewports(1, &viewport);
-		m_commandList->RSSetScissorRects(1, &rcScissor);
+		D3D12_VIEWPORT* viewport = std::any_cast<D3D12_VIEWPORT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_VIEWPORT));
+		D3D12_RECT*     rcScissor= std::any_cast<D3D12_RECT*    >(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_SCISSOR_RECT));
+		m_commandList->RSSetViewports(1, viewport);
+		m_commandList->RSSetScissorRects(1, rcScissor);
 
-		// Indicate this resource will be in use as a render target.
-		CD3DX12_RESOURCE_BARRIER renderTargetResourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		m_commandList->ResourceBarrier(1, &renderTargetResourceBarrier);
+		// 리소스 상태 전환
+		m_commandList->ResourceBarrier(1, &barrier_begin);
 
-		// Record drawing commands.
+		// 클리어
 		auto renderTargetView = std::any_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(IG2GraphicsD3D::getInstance()->GetRenderTargetView());
 		auto depthStencilView = std::any_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(IG2GraphicsD3D::getInstance()->GetDepthStencilView());
-
 		float cornflowerBlue[] = { 0.0f, 0.4f, 0.6f, 1.0f };
+
 		m_commandList->ClearRenderTargetView(renderTargetView, cornflowerBlue, 0, nullptr);
 		m_commandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
 		m_commandList->OMSetRenderTargets(1, &renderTargetView, false, &depthStencilView);
 
+		// ✅ 첫 번째 파이프라인 상태 설정 및 드로우
+		m_commandList->SetPipelineState(m_pipelineState.Get());
 		m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		m_commandList->IASetVertexBuffers(0, 1, &m_viewVtx);
 		m_commandList->IASetIndexBuffer(&m_viewIdx);
 		m_commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
 
-		CD3DX12_RESOURCE_BARRIER presentResourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-		m_commandList->ResourceBarrier(1, &presentResourceBarrier);
+		//// ✅ 두 번째 파이프라인 상태 설정 및 드로우
+		//m_commandList->SetPipelineState(m_pipelineState2.Get());
+		//// 필요하다면 다른 VB/IB도 설정 가능
+		//m_commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+
+		// ✅ 마지막으로 Present 전환
+		m_commandList->ResourceBarrier(1, &barrier_end);
 	}
 
 	hr = m_commandList->Close();
-
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 	commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 	return S_OK;
 }
+
 
 
 
@@ -315,10 +319,9 @@ int MainApp::InitResource()
 		// Create a descriptor heap for the constant buffers.
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-			heapDesc.NumDescriptors = FRAME_BUFFER_COUNT;
-			heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-			// This flag indicates that this descriptor heap can be bound to the pipeline and that descriptors contained in it can be referenced by a root table.
-			heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+				heapDesc.NumDescriptors = FRAME_BUFFER_COUNT;
+				heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+				heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
 		}
 

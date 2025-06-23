@@ -11,8 +11,8 @@
 #include <DirectXMath.h>
 #include <wrl.h>
 #include "G2Base.h"
-using ComPtr;
 using namespace DirectX;
+using namespace Microsoft::WRL;
 
 constexpr inline unsigned ConstantBufferByteSize(unsigned byteSize)
 {
