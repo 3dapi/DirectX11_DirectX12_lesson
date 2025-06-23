@@ -83,20 +83,19 @@ int MainApp::Render()
     auto cmdList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 
     // 디스크립터 힙 설정
-    ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
+    ID3D12DescriptorHeap* ppHeaps[] = { m_renderPass.cbvHeap.Get() };
     cmdList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
 
     // 렌더 패스별 루프
     //for (const auto& pass : m_renderPasses)
     {
-		cmdList->SetPipelineState(m_pipelineState.Get());
-		cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
-		cmdList->SetGraphicsRootDescriptorTable(0, gpuHandle);
+		cmdList->SetPipelineState(m_renderPass.pipelineState.Get());
+		cmdList->SetGraphicsRootSignature(m_renderPass.rootSignature.Get());
+		cmdList->SetGraphicsRootDescriptorTable(0, m_renderPass.cbvHandle);
 
 		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
-		cmdList->IASetIndexBuffer(&m_viewIdx);
+		cmdList->IASetVertexBuffers(0, 1, &m_renderPass.viewVtx);
+		cmdList->IASetIndexBuffer(&m_renderPass.viewIdx);
 		cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);
     }
 
@@ -155,7 +154,7 @@ int MainApp::InitResource()
 		hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, pSignature.GetAddressOf(), pError.GetAddressOf());
 		if (FAILED(hr))
 			return hr;
-		hr = d3dDevice->CreateRootSignature(0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature));
+		hr = d3dDevice->CreateRootSignature(0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_renderPass.rootSignature));
 		if (FAILED(hr))
 			return hr;
 	}
@@ -183,7 +182,7 @@ int MainApp::InitResource()
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 			psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
-			psoDesc.pRootSignature = m_rootSignature.Get();
+			psoDesc.pRootSignature = m_renderPass.rootSignature.Get();
 			psoDesc.VS = CD3DX12_SHADER_BYTECODE(shaderVtx.Get());
 			psoDesc.PS = CD3DX12_SHADER_BYTECODE(shaderPxl.Get());
 			psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -195,7 +194,7 @@ int MainApp::InitResource()
 			psoDesc.RTVFormats[0] = *std::any_cast<DXGI_FORMAT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_RENDER_TARGET_FORAT));
 			psoDesc.DSVFormat     = *std::any_cast<DXGI_FORMAT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_DEPTH_STENCIL_FORAT));
 			psoDesc.SampleDesc.Count = 1;
-		hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
+		hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_renderPass.pipelineState));
 		if (FAILED(hr))
 			return hr;
 	};
@@ -286,7 +285,8 @@ int MainApp::InitResource()
 				heapDesc.NumDescriptors = FRAME_BUFFER_COUNT;
 				heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 				heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
+			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_renderPass.cbvHeap));
+			m_renderPass.cbvHandle = m_renderPass.cbvHeap->GetGPUDescriptorHandleForHeapStart();
 		}
 
 		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * ConstBufMVP::ALIGNED_SIZE);
@@ -294,12 +294,12 @@ int MainApp::InitResource()
 		if (FAILED(hr))
 			return hr;
 
-		m_d3dDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		UINT d3dDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 
 		// Create constant buffer views to access the upload buffer.
 		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstMVP->GetGPUVirtualAddress();
-		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
+		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_renderPass.cbvHeap->GetCPUDescriptorHandleForHeapStart();
 		for (int n = 0; n < FRAME_BUFFER_COUNT; n++)
 		{
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
@@ -307,7 +307,7 @@ int MainApp::InitResource()
 			desc.SizeInBytes = ConstBufMVP::ALIGNED_SIZE;
 			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
 			cbvGpuAddress += desc.SizeInBytes;
-			cbvCpuHandle.ptr = cbvCpuHandle.ptr + m_d3dDescriptorSize;
+			cbvCpuHandle.ptr = cbvCpuHandle.ptr + d3dDescriptorSize;
 		}
 
 		// Map the constant buffers.
@@ -327,13 +327,13 @@ int MainApp::InitResource()
 		commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 		// Create vertex/index buffer views.
-		m_viewVtx.BufferLocation = m_rscVtx->GetGPUVirtualAddress();
-		m_viewVtx.StrideInBytes = sizeof(Vertex);
-		m_viewVtx.SizeInBytes = sizeof(cubeVertices);
+		m_renderPass.viewVtx.BufferLocation = m_rscVtx->GetGPUVirtualAddress();
+		m_renderPass.viewVtx.StrideInBytes = sizeof(Vertex);
+		m_renderPass.viewVtx.SizeInBytes = sizeof(cubeVertices);
 
-		m_viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
-		m_viewIdx.SizeInBytes = sizeof(indices);
-		m_viewIdx.Format = DXGI_FORMAT_R16_UINT;
+		m_renderPass.viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
+		m_renderPass.viewIdx.SizeInBytes = sizeof(indices);
+		m_renderPass.viewIdx.Format = DXGI_FORMAT_R16_UINT;
 
 		D3DApp::getInstance()-> WaitForGpu();
 	}

@@ -30,6 +30,17 @@ constexpr inline unsigned ConstantBufferByteSize(unsigned byteSize)
 	return (byteSize + 255) & ~255;
 }
 
+struct RenderPass
+{
+	ComPtr<ID3D12DescriptorHeap>	cbvHeap			{};
+	ComPtr<ID3D12RootSignature>		rootSignature	{};
+	ComPtr<ID3D12PipelineState>		pipelineState	{};
+	D3D12_VERTEX_BUFFER_VIEW		viewVtx			{};
+	D3D12_INDEX_BUFFER_VIEW			viewIdx			{};
+	UINT							numVtx			{};
+	UINT							numIdx			{};
+	D3D12_GPU_DESCRIPTOR_HANDLE		cbvHandle		{};
+};
 
 struct ConstBufMVP
 {
@@ -49,20 +60,13 @@ struct Vertex
 class MainApp
 {
 protected:
-	UINT												m_d3dDescriptorSize{};
-
-
 	// Direct3D resources for cube geometry.
-	ComPtr<ID3D12DescriptorHeap>			m_cbvHeap;
-	ComPtr<ID3D12RootSignature>				m_rootSignature;
-	ComPtr<ID3D12PipelineState>				m_pipelineState;
+	RenderPass								m_renderPass;
 	ComPtr<ID3D12Resource>					m_rscVtx;
 	ComPtr<ID3D12Resource>					m_rscIdx;
 	ComPtr<ID3D12Resource>					m_cnstMVP;
 	ConstBufMVP								m_cnstBufMVP{};
 	uint8_t*								m_csnstPtrMVP{};
-	D3D12_VERTEX_BUFFER_VIEW				m_viewVtx;
-	D3D12_INDEX_BUFFER_VIEW					m_viewIdx;
 
 	// Variables used with the rendering loop.
 	float	m_radiansPerSecond	{XM_PIDIV4};
