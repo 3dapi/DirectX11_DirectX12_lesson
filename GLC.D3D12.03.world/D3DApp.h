@@ -14,8 +14,10 @@
 #include <D3Dcompiler.h>
 #include <DirectXMath.h>
 #include <wrl.h>
+
+#include "include/d3dx12/d3dx12.h"
 #include "G2Base.h"
-using Microsoft::WRL::ComPtr;
+using ComPtr;
 
 
 #define APP_WIN_STYLE (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE)
@@ -29,7 +31,12 @@ public:
 	std::any	GetDevice()						override;
 	std::any	GetContext()					override;
 	std::any	GetRootSignature()				override;
+	std::any	GetCommandAllocator()			override;
+	std::any	GetCommandQueue()				override;
 	std::any	GetCommandList()				override;
+	std::any	GetRenderTarget()				override;
+	std::any	GetRenderTargetView()			override;
+	std::any	GetDepthStencilView()			override;
 	int			GetCurrentFrameIndex() const	override;
 
 	static D3DApp*	getInstance();								// sigleton
@@ -58,19 +65,19 @@ protected:
 	D3D_FEATURE_LEVEL                   m_featureLevel	{};
 
 	// Pipeline objects.
-	ID3D12Device*						m_d3dDevice				{};
-	ComPtr<IDXGISwapChain3>				m_d3dSwapChain			{};
-	ComPtr<ID3D12CommandQueue>			m_d3dCommandQueue		{};
-	UINT								m_d3dCurrentFrameIndex	{};
-	UINT								m_d3dDescriptorSize		{};
-	ComPtr<ID3D12DescriptorHeap>		m_d3dDescTarget			{};
-	ComPtr<ID3D12Resource>				m_d3dRenderTarget		[FRAME_BUFFER_COUNT];
-	ComPtr<ID3D12DescriptorHeap>		m_d3dDescDepth			{};
-	ComPtr<ID3D12Resource>				m_d3dDepthStencil		{};
-	ComPtr<ID3D12RootSignature>			m_d3dRootSignature		{};
-	ComPtr<ID3D12PipelineState>			m_d3dPipelineState		{};
-	ComPtr<ID3D12CommandAllocator>		m_d3dCommandAllocator	{};
-	ComPtr<ID3D12GraphicsCommandList>	m_d3dCommandList		{};
+	ID3D12Device*						m_d3dDevice					{};
+	ComPtr<IDXGISwapChain3>				m_d3dSwapChain				{};
+	ComPtr<ID3D12CommandQueue>			m_d3dCommandQueue			{};
+	UINT								m_d3dCurrentFrameIndex		{};
+	UINT								m_d3dSizeDescRenderTarget	{};
+	ComPtr<ID3D12DescriptorHeap>		m_d3dDescTarget				{};
+	ComPtr<ID3D12Resource>				m_d3dRenderTarget			[FRAME_BUFFER_COUNT]{};
+	ComPtr<ID3D12DescriptorHeap>		m_d3dDescDepth				{};
+	ComPtr<ID3D12Resource>				m_d3dDepthStencil			{};
+	ComPtr<ID3D12RootSignature>			m_d3dRootSignature			{};
+	ComPtr<ID3D12PipelineState>			m_d3dPipelineState			{};
+	ComPtr<ID3D12CommandAllocator>		m_d3dCommandAllocator		[FRAME_BUFFER_COUNT]{};
+	ComPtr<ID3D12GraphicsCommandList>	m_d3dCommandList			{};
 
 	DXGI_FORMAT							m_formatBackBuffer		{DXGI_FORMAT_R8G8B8A8_UNORM};
 	DXGI_FORMAT							m_formatDepthBuffer		{DXGI_FORMAT_D32_FLOAT};
@@ -79,17 +86,23 @@ protected:
 	D3D12_RECT							m_d3dScissorRect		{};
 
 	// Synchronization objects.
-	HANDLE								m_fenceEvent	{};
-	ComPtr<ID3D12Fence>					m_fence			{};
-	UINT64								m_fenceValue	{};
+	ComPtr<ID3D12Fence>					m_fence						{};
+	UINT64								m_fenceValue				[FRAME_BUFFER_COUNT]{};
+	HANDLE								m_fenceEvent				{};
+
 	int		InitDevice();
 	int		ReleaseDevice();
 	IDXGIAdapter* GetHardwareAdapter(IDXGIFactory1* pFactory, bool requestHighPerformanceAdapter = false);
 	HRESULT PopulateCommandList();
-	HRESULT	WaitForPreviousFrame();
+	
+	HRESULT MoveToNextFrame();
 	// for driven class
 public:
 	HWND GetHwnd() const	{ return m_hWnd; }
+	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView()   const;
+	D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView() const;
+	HRESULT	WaitForGpu();
+
 	virtual int Init()		;
 	virtual int Destroy()	;
 	virtual int Update()	;

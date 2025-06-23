@@ -101,6 +101,12 @@ std::any D3DApp::GetAttrib(int nCmd)
 		case ATTRIB_CMD::ATTRIB_DEVICE:			return m_d3dDevice;
 		case ATTRIB_CMD::ATTRIB_CONTEXT:		return nullptr;
 		case ATTRIB_CMD::ATTRIB_SCREEN_SIZE:	return &m_screenSize;
+		case ATTRIB_CMD::ATTRIB_DEVICE_RENDER_TARGET_FORAT:	return &m_formatBackBuffer;
+		case ATTRIB_CMD::ATTRIB_DEVICE_DEPTH_STENCIL_FORAT:	return &m_formatDepthBuffer;
+		case ATTRIB_CMD::ATTRIB_DEVICE_CURRENT_FRAME_INDEX:	return &m_d3dCurrentFrameIndex;
+
+		case ATTRIB_CMD::ATTRIB_DEVICE_VIEWPORT:		return &m_d3dViewport;
+		case ATTRIB_CMD::ATTRIB_DEVICE_SCISSOR_RECT:	return &m_d3dScissorRect;
 	}
 	return nullptr;
 }
@@ -120,9 +126,33 @@ std::any D3DApp::GetRootSignature()
 	return m_d3dRootSignature.Get();
 }
 
+std::any D3DApp::GetCommandAllocator()
+{
+	return m_d3dCommandAllocator[m_d3dCurrentFrameIndex].Get();
+}
+
+std::any D3DApp::GetCommandQueue()
+{
+	return m_d3dCommandQueue.Get();
+}
+
 std::any D3DApp::GetCommandList()
 {
 	return m_d3dCommandList.Get();
+}
+
+std::any D3DApp::GetRenderTarget()
+{
+	return m_d3dRenderTarget[m_d3dCurrentFrameIndex].Get();
+}
+
+std::any D3DApp::GetRenderTargetView()
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_d3dDescTarget->GetCPUDescriptorHandleForHeapStart(), m_d3dCurrentFrameIndex, m_d3dSizeDescRenderTarget);
+}
+std::any D3DApp::GetDepthStencilView()
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_d3dDescDepth->GetCPUDescriptorHandleForHeapStart());
 }
 
 int D3DApp::GetCurrentFrameIndex() const
@@ -211,20 +241,15 @@ void D3DApp::ToggleFullScreen()
 
 int D3DApp::RenderApp()
 {
-	// update rendering data
 	Update();
 
-	// Record all the commands we need to render the scene into the command list.
-	PopulateCommandList();
+	Render();
 
-	// Execute the command list.
-	ID3D12CommandList* ppCommandLists[] = { m_d3dCommandList.Get() };
-	m_d3dCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-	// Present the frame.
 	HRESULT hr = m_d3dSwapChain->Present(1, 0);
 
-	WaitForPreviousFrame();
+	WaitForGpu();
+	MoveToNextFrame();
 	return hr;
 }
 
@@ -341,7 +366,7 @@ int D3DApp::InitDevice()
 
 	// 5. Create render target and depth-stencil descriptor heaps.
 	{
-		m_d3dDescriptorSize = m_d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		m_d3dSizeDescRenderTarget = m_d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 		// Describe and create a render target view (RTV) descriptor heap.
 		D3D12_DESCRIPTOR_HEAP_DESC descRenderTargetHeap {};
@@ -371,7 +396,7 @@ int D3DApp::InitDevice()
 			if (FAILED(hr))
 				return hr;
 			m_d3dDevice->CreateRenderTargetView(m_d3dRenderTarget[n].Get(), nullptr, rtvHandle);
-			rtvHandle.ptr += m_d3dDescriptorSize;
+			rtvHandle.ptr += m_d3dSizeDescRenderTarget;
 		}
 	}
 
@@ -427,12 +452,15 @@ int D3DApp::InitDevice()
 		m_d3dDevice->CreateDepthStencilView(m_d3dDepthStencil.Get(), &dsvDesc, m_d3dDescDepth->GetCPUDescriptorHandleForHeapStart() );
 	}
 
-	hr = m_d3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_d3dCommandAllocator));
-	if (FAILED(hr))
-		return hr;
-
+	for (UINT n = 0; n < FRAME_BUFFER_COUNT; n++)
+	{
+		m_d3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_d3dCommandAllocator[n]));
+		if (FAILED(hr))
+			return hr;
+	}
 	// Create the command list.
-	hr = m_d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_d3dCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_d3dCommandList));
+	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(this->GetCommandAllocator());
+	hr = m_d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAlloc, nullptr, IID_PPV_ARGS(&m_d3dCommandList));
 	if (FAILED(hr))
 		return hr;
 
@@ -444,10 +472,10 @@ int D3DApp::InitDevice()
 
 	// Create synchronization objects.
 	{
-		hr = m_d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
+		hr = m_d3dDevice->CreateFence(m_fenceValue[m_d3dCurrentFrameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
 		if (FAILED(hr))
 			return hr;
-		m_fenceValue = 1;
+		m_fenceValue[m_d3dCurrentFrameIndex]++;
 
 		// Create an event handle to use for frame synchronization.
 		m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -464,7 +492,7 @@ int D3DApp::InitDevice()
 
 int D3DApp::ReleaseDevice()
 {
-	WaitForPreviousFrame();
+	WaitForGpu();
 
 	Destroy();
 
@@ -475,9 +503,9 @@ int D3DApp::ReleaseDevice()
 	m_d3dDescTarget		.Reset();
 	for(int i=0; i<FRAME_BUFFER_COUNT; ++i)
 	{
-		m_d3dRenderTarget[i].Reset();
+		m_d3dRenderTarget		[i].Reset();
+		m_d3dCommandAllocator	[i].Reset();
 	}
-	m_d3dCommandAllocator	.Reset();
 	m_d3dPipelineState		.Reset();
 	m_d3dCommandList		.Reset();
 	m_d3dSwapChain			.Reset();
@@ -544,90 +572,117 @@ IDXGIAdapter* D3DApp::GetHardwareAdapter(IDXGIFactory1* pFactory, bool requestHi
 HRESULT D3DApp::PopulateCommandList()
 {
 	HRESULT hr = S_OK;
+	//auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(this->GetCommandAllocator());
 
-	// Command allocator는 GPU가 해당 작업을 마친 후에만 Reset 가능.
-	hr = m_d3dCommandAllocator->Reset();
-	if (FAILED(hr))
-		return hr;
+	//// Command allocator는 GPU가 해당 작업을 마친 후에만 Reset 가능.
+	//hr = commandAlloc->Reset();
+	//if (FAILED(hr))
+	//	return hr;
 
-	// Command list는 Execute 후 언제든 Reset 가능. 반드시 Reset 후 재사용해야 함.
-	hr = m_d3dCommandList->Reset(m_d3dCommandAllocator.Get(), m_d3dPipelineState.Get());
-	if (FAILED(hr))
-		return hr;
+	//
+	//// Command list는 Execute 후 언제든 Reset 가능. 반드시 Reset 후 재사용해야 함.
+	//hr = m_d3dCommandList->Reset(commandAlloc, m_d3dPipelineState.Get());
+	//if (FAILED(hr))
+	//	return hr;
 
-	// --- 1. 리소스 상태 전환: Present → RenderTarget ---
-	D3D12_RESOURCE_BARRIER barrier = {};
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = m_d3dRenderTarget[m_d3dCurrentFrameIndex].Get();
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+	//// --- 1. 리소스 상태 전환: Present → RenderTarget ---
+	//D3D12_RESOURCE_BARRIER barrier = {};
+	//barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	//barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	//barrier.Transition.pResource = m_d3dRenderTarget[m_d3dCurrentFrameIndex].Get();
+	//barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+	//barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	//barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
-	m_d3dCommandList->ResourceBarrier(1, &barrier);
+	//m_d3dCommandList->ResourceBarrier(1, &barrier);
 
-	// --- 2. render target and depth handle
-	D3D12_CPU_DESCRIPTOR_HANDLE descRenderTargetView = m_d3dDescTarget->GetCPUDescriptorHandleForHeapStart();
-	descRenderTargetView.ptr += static_cast<SIZE_T>(m_d3dCurrentFrameIndex) * static_cast<SIZE_T>(m_d3dDescriptorSize);
-	D3D12_CPU_DESCRIPTOR_HANDLE descDepthView = m_d3dDescDepth->GetCPUDescriptorHandleForHeapStart();
+	//// --- 2. render target and depth handle
+	//D3D12_CPU_DESCRIPTOR_HANDLE descRenderTargetView = m_d3dDescTarget->GetCPUDescriptorHandleForHeapStart();
+	//descRenderTargetView.ptr += static_cast<SIZE_T>(m_d3dCurrentFrameIndex) * static_cast<SIZE_T>(m_d3dSizeDescRenderTarget);
+	//D3D12_CPU_DESCRIPTOR_HANDLE descDepthView = m_d3dDescDepth->GetCPUDescriptorHandleForHeapStart();
 
-	// --- 3. clear render target and depth handle
-	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
-	m_d3dCommandList->ClearRenderTargetView(descRenderTargetView, clearColor, 0, nullptr);
-	m_d3dCommandList->ClearDepthStencilView(descDepthView, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	//// --- 3. clear render target and depth handle
+	//const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+	//m_d3dCommandList->ClearRenderTargetView(descRenderTargetView, clearColor, 0, nullptr);
+	//m_d3dCommandList->ClearDepthStencilView(descDepthView, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-	// --- 4. binding render target and depth handle
-	m_d3dCommandList->OMSetRenderTargets(1, &descRenderTargetView, FALSE, &descDepthView);
-	m_d3dCommandList->SetGraphicsRootSignature(m_d3dRootSignature.Get());
+	//// --- 4. binding render target and depth handle
+	//m_d3dCommandList->OMSetRenderTargets(1, &descRenderTargetView, FALSE, &descDepthView);
+	//m_d3dCommandList->SetGraphicsRootSignature(m_d3dRootSignature.Get());
 
-	// --- 5. set viewport and scissor rect
-	m_d3dCommandList->RSSetViewports(1, &m_d3dViewport);
-	m_d3dCommandList->RSSetScissorRects(1, &m_d3dScissorRect);
+	//// --- 5. set viewport and scissor rect
+	//m_d3dCommandList->RSSetViewports(1, &m_d3dViewport);
+	//m_d3dCommandList->RSSetScissorRects(1, &m_d3dScissorRect);
 
 
 	//
-	Render();
+	
 	//
 
 	// --- 4. 리소스 상태 전환: RenderTarget → Present ---
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+	//barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	//barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 
-	m_d3dCommandList->ResourceBarrier(1, &barrier);
+	//m_d3dCommandList->ResourceBarrier(1, &barrier);
 
-	// --- 5. 명령 리스트 종료 ---
-	hr = m_d3dCommandList->Close();
+	//// --- 5. 명령 리스트 종료 ---
+	//hr = m_d3dCommandList->Close();
 
 	return hr;
 }
 
-HRESULT D3DApp::WaitForPreviousFrame()
+HRESULT D3DApp::WaitForGpu()
 {
 	HRESULT hr = S_OK;
-	// WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-	// This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-	// sample illustrates how to use fences for efficient resource usage and to
-	// maximize GPU utilization.
 
-	// Signal and increment the fence value.
-	const UINT64 fence = m_fenceValue;
-	hr = m_d3dCommandQueue->Signal(m_fence.Get(), fence);
+	hr = m_d3dCommandQueue->Signal(m_fence.Get(), m_fenceValue[m_d3dCurrentFrameIndex]);
+	if (FAILED(hr))
+		return hr;
+	hr = m_fence->SetEventOnCompletion(m_fenceValue[m_d3dCurrentFrameIndex], m_fenceEvent);
 	if (FAILED(hr))
 		return hr;
 
-	m_fenceValue++;
+	WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 
-	// Wait until the previous frame is finished.
-	if (m_fence->GetCompletedValue() < fence)
-	{
-		hr = m_fence->SetEventOnCompletion(fence, m_fenceEvent);
-		if (FAILED(hr))
-			return hr;
-		WaitForSingleObject(m_fenceEvent, INFINITE);
-	}
-
+	m_fenceValue[m_d3dCurrentFrameIndex]++;
 	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
 	return S_OK;
+}
+
+HRESULT D3DApp::MoveToNextFrame()
+{
+	HRESULT hr = S_OK;
+
+	// Schedule a Signal command in the queue.
+	const UINT64 currentFenceValue = m_fenceValue[m_d3dCurrentFrameIndex];
+	hr = m_d3dCommandQueue->Signal(m_fence.Get(), currentFenceValue);
+	if (FAILED(hr))
+		return hr;
+
+	// Advance the frame index.
+	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
+
+	// Check to see if the next frame is ready to start.
+	if (m_fence->GetCompletedValue() < m_fenceValue[m_d3dCurrentFrameIndex])
+	{
+		hr = m_fence->SetEventOnCompletion(m_fenceValue[m_d3dCurrentFrameIndex], m_fenceEvent);
+		if (FAILED(hr))
+			return hr;
+		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
+	}
+
+	m_fenceValue[m_d3dCurrentFrameIndex] = currentFenceValue + 1;
+	return S_OK;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE D3DApp::CurrentBackBufferView() const
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_d3dDescTarget->GetCPUDescriptorHandleForHeapStart(), m_d3dCurrentFrameIndex, m_d3dSizeDescRenderTarget);
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE D3DApp::DepthStencilView() const
+{
+	return m_d3dDescDepth->GetCPUDescriptorHandleForHeapStart();
 }
 
 int D3DApp::Init()
