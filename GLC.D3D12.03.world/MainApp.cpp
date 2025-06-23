@@ -44,6 +44,7 @@ int MainApp::Destroy()
 {
 	m_cnstMVP->Unmap(0, nullptr);
 	m_csnstPtrMVP = nullptr;
+	m_renderPass.Destroy();
 	return S_OK;
 }
 
@@ -96,7 +97,7 @@ int MainApp::Render()
 		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		cmdList->IASetVertexBuffers(0, 1, &m_renderPass.viewVtx);
 		cmdList->IASetIndexBuffer(&m_renderPass.viewIdx);
-		cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+		cmdList->DrawIndexedInstanced(m_renderPass.numIdx, 1, 0, 0, 0);
     }
 
     return S_OK;
@@ -254,7 +255,8 @@ int MainApp::InitResource()
 			6, 4, 5,   7, 4, 6,
 		};
 
-		const UINT indexBufferSize = sizeof(indices);
+		m_renderPass.numIdx = sizeof(indices) / sizeof(indices[0]);
+		const UINT indexBufferSize = m_renderPass.numIdx * sizeof(unsigned short);
 
 		ComPtr<ID3D12Resource> indexBufferUpload{};
 

@@ -40,6 +40,17 @@ struct RenderPass
 	UINT							numVtx			{};
 	UINT							numIdx			{};
 	D3D12_GPU_DESCRIPTOR_HANDLE		cbvHandle		{};
+	void Destroy()
+	{
+		cbvHeap.Reset();
+		rootSignature.Reset();
+		pipelineState.Reset();
+		viewVtx = {};
+		viewIdx = {};
+		numVtx = 0;
+		numIdx = 0;
+		cbvHandle.ptr = 0;
+	}
 };
 
 struct ConstBufMVP
