@@ -288,7 +288,7 @@ int D3DApp::RenderApp()
     commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 
-	hr = m_d3dSwapChain->Present(1, 0);
+	hr = m_d3dSwapChain->Present(0, 0);
 
 	WaitForGpu();
 	MoveToNextFrame();

@@ -282,6 +282,7 @@ int D3DApp::InitDevice()
 		return E_FAIL;
 
 	// 1.1 Create an empty root signature.
+	// 레지스터가 없는 경우에 사용.
 	{
 		D3D12_ROOT_SIGNATURE_DESC rsDesc{};
 		rsDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
