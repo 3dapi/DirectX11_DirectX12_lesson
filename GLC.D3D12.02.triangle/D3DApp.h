@@ -76,7 +76,7 @@ protected:
 	// Synchronization objects.
 	HANDLE								m_fenceEvent	{};
 	ComPtr<ID3D12Fence>					m_fence			{};
-	UINT64								m_fenceValue	{};
+	UINT64								m_fenceValue	[FRAME_BUFFER_COUNT]{1,1};
 	int		InitDevice();
 	int		ReleaseDevice();
 	IDXGIAdapter* GetHardwareAdapter(IDXGIFactory1* pFactory, bool requestHighPerformanceAdapter = false);

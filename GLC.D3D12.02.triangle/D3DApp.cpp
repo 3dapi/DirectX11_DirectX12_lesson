@@ -381,7 +381,6 @@ int D3DApp::InitDevice()
 		hr = m_d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
 		if (FAILED(hr))
 			return hr;
-		m_fenceValue = 1;
 
 		// Create an event handle to use for frame synchronization.
 		m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -532,29 +531,25 @@ HRESULT D3DApp::PopulateCommandList()
 HRESULT D3DApp::WaitForPreviousFrame()
 {
 	HRESULT hr = S_OK;
-	// WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-	// This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-	// sample illustrates how to use fences for efficient resource usage and to
-	// maximize GPU utilization.
+	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
 
-	// Signal and increment the fence value.
-	const UINT64 fence = m_fenceValue;
-	hr = m_d3dCommandQueue->Signal(m_fence.Get(), fence);
+	// 값을 던저 본다.
+	auto fenceValue  = &m_fenceValue[m_d3dCurrentFrameIndex];
+	hr = m_d3dCommandQueue->Signal(m_fence.Get(), *fenceValue);
 	if (FAILED(hr))
 		return hr;
-
-	m_fenceValue++;
-
-	// Wait until the previous frame is finished.
-	if (m_fence->GetCompletedValue() < fence)
+	// 일단 받아보고
+	auto rcv_fence = m_fence->GetCompletedValue();
+	// 받아본 값이 던진 것과 같다면 gpu 작업 완료. 아니면 왼료 될때까지 기다림.
+	if ( rcv_fence != *fenceValue)
 	{
-		hr = m_fence->SetEventOnCompletion(fence, m_fenceEvent);
+		hr = m_fence->SetEventOnCompletion(*fenceValue, m_fenceEvent);
 		if (FAILED(hr))
 			return hr;
 		WaitForSingleObject(m_fenceEvent, INFINITE);
 	}
-
-	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
+	// 다른 값으로 만든다.
+	++(*fenceValue);
 	return S_OK;
 }
 
