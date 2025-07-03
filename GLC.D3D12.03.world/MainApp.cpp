@@ -42,15 +42,15 @@ int MainApp::Init()
 
 int MainApp::Destroy()
 {
-	m_cbvHeap.Reset();
-	m_rootSignature.Reset();
-	m_pipelineState.Reset();
-	m_viewVtx = {};
-	m_viewIdx = {};
+	m_cbvHeap			.Reset();
+	m_rootSignature		.Reset();
+	m_pipelineState		.Reset();
+	m_viewVtx			= {};
+	m_viewIdx			= {};
 	m_numVtx			= 0;
 	m_numIdx			= 0;
-	m_cnstMVP->Unmap(0, nullptr);
-	m_csnstPtrMVP = nullptr;
+	m_cnstMVP			->Unmap(0, nullptr);
+	m_csnstPtrMVP		= nullptr;
 	return S_OK;
 }
 
@@ -72,14 +72,9 @@ int MainApp::Update()
 		{
 			// Rotate the cube a small amount.
 			m_angle = t * m_radiansPerSecond;
-
-			Rotate(m_angle);
+			m_cnstBufMVP.m = XMMatrixRotationY(m_angle) * XMMatrixTranslation(-300, 0, 0);
+			m_tmWorld2 = m_cnstBufMVP.m * XMMatrixTranslation(600, 0, 0);
 		}
-
-		// Update the constant buffer resource.
-		auto currentFrameIndex = *(std::any_cast<UINT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
-		UINT8* destination = m_csnstPtrMVP + (currentFrameIndex * ConstBufMVP::ALIGNED_SIZE);
-		memcpy(destination, &m_cnstBufMVP, sizeof(m_cnstBufMVP));
 	}
 	return S_OK;
 }
@@ -87,15 +82,20 @@ int MainApp::Update()
 int MainApp::Render()
 {
     HRESULT hr = S_OK;
+	auto currentFrameIndex = *(std::any_cast<UINT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
     auto cmdList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 
     // 디스크립터 힙 설정
     ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
     cmdList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    // 렌더 패스별 루프
-    //for (const auto& pass : m_renderPasses)
     {
+		// Update the constant buffer resource.
+		{
+			uint8_t* destination = m_csnstPtrMVP + (currentFrameIndex * ConstBufMVP::ALIGNED_SIZE);
+			memcpy(destination, &m_cnstBufMVP, sizeof(m_cnstBufMVP));
+		}
+
 		cmdList->SetPipelineState(m_pipelineState.Get());
 		cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 		cmdList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
@@ -105,7 +105,25 @@ int MainApp::Render()
 		cmdList->IASetIndexBuffer(&m_viewIdx);
 		cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
     }
+	{
+		XMMATRIX curWorld = m_cnstBufMVP.m;
+		m_cnstBufMVP.m = m_tmWorld2;
+		{
+			uint8_t* destination = m_csnstPtrMVP + (currentFrameIndex * ConstBufMVP::ALIGNED_SIZE);
+			memcpy(destination, &m_cnstBufMVP, sizeof(m_cnstBufMVP));
+		}
 
+		cmdList->SetPipelineState(m_pipelineState.Get());
+		cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+		cmdList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
+
+		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
+		cmdList->IASetIndexBuffer(&m_viewIdx);
+		cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
+
+		m_cnstBufMVP.m = curWorld;
+	}
     return S_OK;
 }
 
@@ -211,14 +229,14 @@ int MainApp::InitResource()
 		// Cube vertices. Each vertex has a position and a color.
 		Vertex cubeVertices[] =
 		{
-			{ { -200.0f,  200.0f, -200.0f }, {   0,   0, 255, 255 } },
-			{ {  200.0f,  200.0f, -200.0f }, {   0, 255,   0, 255 } },
-			{ {  200.0f,  200.0f,  200.0f }, {   0, 255, 255, 255 } },
-			{ { -200.0f,  200.0f,  200.0f }, { 255,   0,   0, 255 } },
-			{ { -200.0f, -200.0f, -200.0f }, { 255,   0, 255, 255 } },
-			{ {  200.0f, -200.0f, -200.0f }, { 255, 255,   0, 255 } },
-			{ {  200.0f, -200.0f,  200.0f }, { 255, 255, 255, 255 } },
-			{ { -200.0f, -200.0f,  200.0f }, {  70,  70,  70, 255 } },
+			{ { -120.0f,  120.0f, -120.0f }, {   0,   0, 255, 255 } },
+			{ {  120.0f,  120.0f, -120.0f }, {   0, 255,   0, 255 } },
+			{ {  120.0f,  120.0f,  120.0f }, {   0, 255, 255, 255 } },
+			{ { -120.0f,  120.0f,  120.0f }, { 255,   0,   0, 255 } },
+			{ { -120.0f, -120.0f, -120.0f }, { 255,   0, 255, 255 } },
+			{ {  120.0f, -120.0f, -120.0f }, { 255, 255,   0, 255 } },
+			{ {  120.0f, -120.0f,  120.0f }, { 255, 255, 255, 255 } },
+			{ { -120.0f, -120.0f,  120.0f }, {  70,  70,  70, 255 } },
 		};
 
 		const UINT vertexBufferSize = sizeof(cubeVertices);
@@ -296,32 +314,36 @@ int MainApp::InitResource()
 			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
 		}
 
-		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * ConstBufMVP::ALIGNED_SIZE);
-		hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &constantBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_cnstMVP));
-		if (FAILED(hr))
-			return hr;
-
 		UINT d3dDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-
-		// Create constant buffer views to access the upload buffer.
-		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstMVP->GetGPUVirtualAddress();
 		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
-		for (int n = 0; n < FRAME_BUFFER_COUNT; n++)
+		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * ConstBufMVP::ALIGNED_SIZE);
 		{
-			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-			desc.BufferLocation = cbvGpuAddress;
-			desc.SizeInBytes = ConstBufMVP::ALIGNED_SIZE;
-			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-			cbvGpuAddress += desc.SizeInBytes;
-			cbvCpuHandle.ptr = cbvCpuHandle.ptr + d3dDescriptorSize;
-		}
+			hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties
+													, D3D12_HEAP_FLAG_NONE
+													, &constantBufferDesc
+													, D3D12_RESOURCE_STATE_GENERIC_READ
+													, nullptr
+													, IID_PPV_ARGS(&m_cnstMVP));
+			if (FAILED(hr))
+				return hr;
 
-		// Map the constant buffers.
-		CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
-		hr = m_cnstMVP->Map(0, &readRange, reinterpret_cast<void**>(&m_csnstPtrMVP));
-		if (FAILED(hr))
-			return hr;
+			// Create constant buffer views to access the upload buffer.
+			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstMVP->GetGPUVirtualAddress();
+			for (int n = 0; n < FRAME_BUFFER_COUNT; ++n)
+			{
+				D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+				desc.BufferLocation = cbvGpuAddress;
+				desc.SizeInBytes = ConstBufMVP::ALIGNED_SIZE;
+				d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
+				cbvGpuAddress += desc.SizeInBytes;
+				cbvCpuHandle.ptr = cbvCpuHandle.ptr + d3dDescriptorSize;
+			}
+			// Map the constant buffers.
+			CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
+			hr = m_cnstMVP->Map(0, &readRange, reinterpret_cast<void**>(&m_csnstPtrMVP));
+			if (FAILED(hr))
+				return hr;
+		}
 
 		// Close the command list and execute it to begin the vertex/index buffer copy into the GPU's default heap.
 		hr = commandList->Close();
@@ -369,13 +391,6 @@ int MainApp::InitConstValue()
 	static const XMVECTORF32 at =  { 0.0f,  1.0f,    0.0f, 0.0f };
 	static const XMVECTORF32 up =  { 0.0f,  1.0f,    0.0f, 0.0f };
 	m_cnstBufMVP.v = XMMatrixLookAtLH(eye, at, up);
+
 	return S_OK;
 }
-
-// Rotate the 3D cube model a set amount of radians.
-void MainApp::Rotate(float radians)
-{
-	// Prepare to pass the updated model matrix to the shader.
-	m_cnstBufMVP.m = XMMatrixRotationY(radians);
-}
-

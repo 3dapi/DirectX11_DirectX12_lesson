@@ -47,9 +47,12 @@ protected:
 
 	ComPtr<ID3D12Resource>			m_rscVtx			{};
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
+
 	ComPtr<ID3D12Resource>			m_cnstMVP			{};
 	ConstBufMVP						m_cnstBufMVP		{};
 	uint8_t*						m_csnstPtrMVP		{};
+
+	XMMATRIX						m_tmWorld2			= XMMatrixIdentity();
 
 	// Variables used with the rendering loop.
 	float	m_radiansPerSecond	{XM_PIDIV4};
@@ -66,7 +69,6 @@ public:
 
 	int InitResource();
 	int InitConstValue();
-	void Rotate(float radians);
 };
 
 
