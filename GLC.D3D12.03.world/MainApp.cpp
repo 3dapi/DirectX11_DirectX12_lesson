@@ -42,9 +42,15 @@ int MainApp::Init()
 
 int MainApp::Destroy()
 {
+	m_cbvHeap.Reset();
+	m_rootSignature.Reset();
+	m_pipelineState.Reset();
+	m_viewVtx = {};
+	m_viewIdx = {};
+	m_numVtx			= 0;
+	m_numIdx			= 0;
 	m_cnstMVP->Unmap(0, nullptr);
 	m_csnstPtrMVP = nullptr;
-	m_renderPass.Destroy();
 	return S_OK;
 }
 
@@ -84,20 +90,20 @@ int MainApp::Render()
     auto cmdList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 
     // 디스크립터 힙 설정
-    ID3D12DescriptorHeap* ppHeaps[] = { m_renderPass.cbvHeap.Get() };
+    ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
     cmdList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     // 렌더 패스별 루프
     //for (const auto& pass : m_renderPasses)
     {
-		cmdList->SetPipelineState(m_renderPass.pipelineState.Get());
-		cmdList->SetGraphicsRootSignature(m_renderPass.rootSignature.Get());
-		cmdList->SetGraphicsRootDescriptorTable(0, m_renderPass.cbvHandle);
+		cmdList->SetPipelineState(m_pipelineState.Get());
+		cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+		cmdList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
 
 		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		cmdList->IASetVertexBuffers(0, 1, &m_renderPass.viewVtx);
-		cmdList->IASetIndexBuffer(&m_renderPass.viewIdx);
-		cmdList->DrawIndexedInstanced(m_renderPass.numIdx, 1, 0, 0, 0);
+		cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
+		cmdList->IASetIndexBuffer(&m_viewIdx);
+		cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
     }
 
     return S_OK;
@@ -155,7 +161,7 @@ int MainApp::InitResource()
 		hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, pSignature.GetAddressOf(), pError.GetAddressOf());
 		if (FAILED(hr))
 			return hr;
-		hr = d3dDevice->CreateRootSignature(0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_renderPass.rootSignature));
+		hr = d3dDevice->CreateRootSignature(0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature));
 		if (FAILED(hr))
 			return hr;
 	}
@@ -183,7 +189,7 @@ int MainApp::InitResource()
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 			psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
-			psoDesc.pRootSignature = m_renderPass.rootSignature.Get();
+			psoDesc.pRootSignature = m_rootSignature.Get();
 			psoDesc.VS = CD3DX12_SHADER_BYTECODE(shaderVtx.Get());
 			psoDesc.PS = CD3DX12_SHADER_BYTECODE(shaderPxl.Get());
 			psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -195,7 +201,7 @@ int MainApp::InitResource()
 			psoDesc.RTVFormats[0] = *std::any_cast<DXGI_FORMAT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_RENDER_TARGET_FORAT));
 			psoDesc.DSVFormat     = *std::any_cast<DXGI_FORMAT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_DEPTH_STENCIL_FORAT));
 			psoDesc.SampleDesc.Count = 1;
-		hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_renderPass.pipelineState));
+		hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
 		if (FAILED(hr))
 			return hr;
 	};
@@ -205,14 +211,14 @@ int MainApp::InitResource()
 		// Cube vertices. Each vertex has a position and a color.
 		Vertex cubeVertices[] =
 		{
-			{ { -1.0f,  1.0f, -1.0f }, {   0,   0, 255, 255 } },
-			{ {  1.0f,  1.0f, -1.0f }, {   0, 255,   0, 255 } },
-			{ {  1.0f,  1.0f,  1.0f }, {   0, 255, 255, 255 } },
-			{ { -1.0f,  1.0f,  1.0f }, { 255,   0,   0, 255 } },
-			{ { -1.0f, -1.0f, -1.0f }, { 255,   0, 255, 255 } },
-			{ {  1.0f, -1.0f, -1.0f }, { 255, 255,   0, 255 } },
-			{ {  1.0f, -1.0f,  1.0f }, { 255, 255, 255, 255 } },
-			{ { -1.0f, -1.0f,  1.0f }, {  70,  70,  70, 255 } },
+			{ { -200.0f,  200.0f, -200.0f }, {   0,   0, 255, 255 } },
+			{ {  200.0f,  200.0f, -200.0f }, {   0, 255,   0, 255 } },
+			{ {  200.0f,  200.0f,  200.0f }, {   0, 255, 255, 255 } },
+			{ { -200.0f,  200.0f,  200.0f }, { 255,   0,   0, 255 } },
+			{ { -200.0f, -200.0f, -200.0f }, { 255,   0, 255, 255 } },
+			{ {  200.0f, -200.0f, -200.0f }, { 255, 255,   0, 255 } },
+			{ {  200.0f, -200.0f,  200.0f }, { 255, 255, 255, 255 } },
+			{ { -200.0f, -200.0f,  200.0f }, {  70,  70,  70, 255 } },
 		};
 
 		const UINT vertexBufferSize = sizeof(cubeVertices);
@@ -255,8 +261,8 @@ int MainApp::InitResource()
 			6, 4, 5,   7, 4, 6,
 		};
 
-		m_renderPass.numIdx = sizeof(indices) / sizeof(indices[0]);
-		const UINT indexBufferSize = m_renderPass.numIdx * sizeof(unsigned short);
+		m_numIdx = sizeof(indices) / sizeof(indices[0]);
+		const UINT indexBufferSize = m_numIdx * sizeof(unsigned short);
 
 		ComPtr<ID3D12Resource> indexBufferUpload{};
 
@@ -284,11 +290,10 @@ int MainApp::InitResource()
 		// Create a descriptor heap for the constant buffers.
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-				heapDesc.NumDescriptors = FRAME_BUFFER_COUNT;
+				heapDesc.NumDescriptors = UINT(FRAME_BUFFER_COUNT * (1 + 0) * 1.5) ;	// FRAME_BUFFER_COUNT * (상수 레지스터 + 텍스처 레지스터) *1.5 (넉넉하게..)
 				heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 				heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_renderPass.cbvHeap));
-			m_renderPass.cbvHandle = m_renderPass.cbvHeap->GetGPUDescriptorHandleForHeapStart();
+			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
 		}
 
 		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * ConstBufMVP::ALIGNED_SIZE);
@@ -301,7 +306,7 @@ int MainApp::InitResource()
 
 		// Create constant buffer views to access the upload buffer.
 		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstMVP->GetGPUVirtualAddress();
-		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_renderPass.cbvHeap->GetCPUDescriptorHandleForHeapStart();
+		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
 		for (int n = 0; n < FRAME_BUFFER_COUNT; n++)
 		{
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
@@ -329,13 +334,13 @@ int MainApp::InitResource()
 		commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 		// Create vertex/index buffer views.
-		m_renderPass.viewVtx.BufferLocation = m_rscVtx->GetGPUVirtualAddress();
-		m_renderPass.viewVtx.StrideInBytes = sizeof(Vertex);
-		m_renderPass.viewVtx.SizeInBytes = sizeof(cubeVertices);
+		m_viewVtx.BufferLocation = m_rscVtx->GetGPUVirtualAddress();
+		m_viewVtx.StrideInBytes = sizeof(Vertex);
+		m_viewVtx.SizeInBytes = sizeof(cubeVertices);
 
-		m_renderPass.viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
-		m_renderPass.viewIdx.SizeInBytes = sizeof(indices);
-		m_renderPass.viewIdx.Format = DXGI_FORMAT_R16_UINT;
+		m_viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
+		m_viewIdx.SizeInBytes = sizeof(indices);
+		m_viewIdx.Format = DXGI_FORMAT_R16_UINT;
 
 		D3DApp::getInstance()-> WaitForGpu();
 	}
@@ -357,15 +362,13 @@ int MainApp::InitConstValue()
 	}
 
 	// This sample makes use of a right-handed coordinate system using row-major matrices.
-	XMMATRIX perspectiveMatrix = XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, 0.01f, 100.0f);
-	XMStoreFloat4x4(&m_cnstBufMVP.p, perspectiveMatrix);
+	m_cnstBufMVP.p = XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, 0.01f, 5000.0f);
 
 	// Eye is at (0,0.7,1.5), looking at point (0,-0.1,0) with the up-vector along the y-axis.
-	static const XMVECTORF32 eye = { 0.0f, 1.0f, -5.0f, 0.0f };
-	static const XMVECTORF32 at = { 0.0f, 1.0f, 0.0f, 0.0f };
-	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
-
-	XMStoreFloat4x4(&m_cnstBufMVP.v, XMMatrixLookAtLH(eye, at, up));
+	static const XMVECTORF32 eye = { 0.0f,600.0f, -700.0f, 0.0f };
+	static const XMVECTORF32 at =  { 0.0f,  1.0f,    0.0f, 0.0f };
+	static const XMVECTORF32 up =  { 0.0f,  1.0f,    0.0f, 0.0f };
+	m_cnstBufMVP.v = XMMatrixLookAtLH(eye, at, up);
 	return S_OK;
 }
 
@@ -373,6 +376,6 @@ int MainApp::InitConstValue()
 void MainApp::Rotate(float radians)
 {
 	// Prepare to pass the updated model matrix to the shader.
-	XMStoreFloat4x4(&m_cnstBufMVP.m, XMMatrixRotationY(radians));
+	m_cnstBufMVP.m = XMMatrixRotationY(radians);
 }
 
