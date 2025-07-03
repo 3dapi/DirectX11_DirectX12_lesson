@@ -42,12 +42,21 @@ protected:
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_cbvHandle			{};
 	ComPtr<ID3D12Resource>			m_rscVtxGPU			{};
 	ComPtr<ID3D12Resource>			m_rscIdxGPU			{};
-	ComPtr<ID3D12Resource>			m_textureRsc		{};		// assets/res_checker.png
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_textureHandle		{};		// checker SRV GPU 핸들
+	ComPtr<ID3D12Resource>			m_spineTextureRsc	{};		// spine texture resource
+	D3D12_GPU_DESCRIPTOR_HANDLE		m_spineTexture		{};		// spine texture handle
 
-	ComPtr<ID3D12Resource>			m_cnstTmWld			{};
-	uint8_t*						m_ptrWld			{};
+	ComPtr<ID3D12Resource>			m_cnstMVP			{};
+	uint8_t*						m_ptrMVP			{};
 	double							m_angle				{};
+
+	// spine instance
+	spine::Skeleton*			m_spineSkeleton		{};
+	spine::AnimationState*		m_spineAniState		{};
+	spine::SkeletonData*		m_spineSkeletonData	{};
+	spine::Atlas*				m_spineAtlas		{};
+
+	size_t						m_bufVtxCount		{};
+	size_t						m_bufIdxCount		{};
 
 public:
 	MainApp();
@@ -58,9 +67,9 @@ public:
 	virtual int Update();
 	virtual int Render();
 
+	int InitSpine();
 	int InitForDevice();
 	int InitForResource();
-	int InitConstValue();
 
 public:
 	void load(spine::AtlasPage& page, const spine::String& path) override;
