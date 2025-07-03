@@ -18,7 +18,7 @@ struct PS_IN
 };
 
 // Vertex Shader
-PS_IN main_vtx( VS_IN v )
+PS_IN main_vs( VS_IN v )
 {
     PS_IN o = (PS_IN) 0;
     o.p = mul( tmMVP, float4(v.p, 0.0F, 1.0F) );
@@ -28,7 +28,7 @@ PS_IN main_vtx( VS_IN v )
 }
 
 // Pixel Shader
-float4 main_pxl( PS_IN v) : SV_Target0
+float4 main_ps( PS_IN v) : SV_Target0
 {
 	float4 t1 = gTex0.Sample(gSmpLinear, v.t);
 	float4 o = t1 * v.d * 1.5F;

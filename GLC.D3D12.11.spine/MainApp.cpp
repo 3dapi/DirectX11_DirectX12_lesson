@@ -94,7 +94,7 @@ int MainApp::Update()
 		m_angle = 0.0F;
 		float aspectRatio = 1280.0F / 640.0F;
 		XMMATRIX tmPrj = XMMatrixPerspectiveFovLH(XM_PIDIV4 * 1.2F, aspectRatio, 1.0f, 5000.0f);
-		static const XMVECTORF32 eye = {0.0f, 10.0f, -700.0f, 0.0f};
+		static const XMVECTORF32 eye = {0.0f, 10.0f, -900.0f, 0.0f};
 		static const XMVECTORF32 at = {0.0f, 0.0f, 0.0f, 0.0f};
 		static const XMVECTORF32 up = {0.0f, 1.0f, 0.0f, 0.0f};
 		XMMATRIX tmViw = XMMatrixLookAtLH(eye, at, up);
@@ -256,10 +256,10 @@ int MainApp::InitResource()
 	{
 		Vertex cubeVertices[] =
 		{
-			{{-40.0f,  40.0f}, {  0,   0, 255, 255}, {0.0f, 0.0f}},
-			{{ 40.0f,  40.0f}, {  0, 255,   0, 255}, {0.0f, 1.0f}},
-			{{ 40.0f, -40.0f}, {  0, 255, 255, 255}, {1.0f, 1.0f}},
-			{{-40.0f, -40.0f}, {255,   0,   0, 255}, {1.0f, 1.0f}},
+			{{-200.0f,  200.0f}, {255,   0,   0, 255}, {0.0f, 0.0f}},
+			{{ 200.0f,  200.0f}, {  0, 255,   0, 255}, {1.0f, 0.0f}},
+			{{ 200.0f, -200.0f}, {  0,   0, 255, 255}, {1.0f, 1.0f}},
+			{{-200.0f, -200.0f}, {255,   0, 255, 255}, {0.0f, 1.0f}},
 		};
 		const UINT vertexBufferSize = sizeof(cubeVertices);
 		ComPtr<ID3D12Resource> vertexBufferUpload;
@@ -289,7 +289,7 @@ int MainApp::InitResource()
 
 		unsigned short indices[] =
 		{
-			0, 1, 2, 1, 2, 3,
+			0, 1, 2, 0, 2, 3,
 		};
 
 		m_numIdx = sizeof(indices) / sizeof(indices[0]);
