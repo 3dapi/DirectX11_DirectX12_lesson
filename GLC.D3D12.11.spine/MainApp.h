@@ -40,8 +40,8 @@ protected:
 	UINT							m_numVtx			{};
 	UINT							m_numIdx			{};
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_cbvHandle			{};
-	ComPtr<ID3D12Resource>			m_rscVtx			{};
-	ComPtr<ID3D12Resource>			m_rscIdx			{};
+	ComPtr<ID3D12Resource>			m_rscVtxGPU			{};
+	ComPtr<ID3D12Resource>			m_rscIdxGPU			{};
 	ComPtr<ID3D12Resource>			m_textureRsc		{};		// assets/res_checker.png
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_textureHandle		{};		// checker SRV GPU 핸들
 
