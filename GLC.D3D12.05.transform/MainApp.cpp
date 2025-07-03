@@ -145,13 +145,6 @@ int MainApp::InitResource()
 	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
 	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 
-	hr = commandAlloc->Reset();
-	if(FAILED(hr))
-		return hr;
-	hr = commandList->Reset(commandAlloc, nullptr);  // PSO는 루프 내에서 설정 예정
-	if(FAILED(hr))
-		return hr;
-
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 1. Create a root signature with a single constant buffer slot.
 	{
@@ -249,19 +242,201 @@ int MainApp::InitResource()
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// 3. 리소스 버텍스 버퍼
-	// 버텍스 버퍼는 CreateCommittedResource 내부에서 heap 사용?
+	// 3. 상수 + 텍스처 버퍼 heap 생성
+	// Create a descriptor heap for the constant buffers.
 	{
+		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+		heapDesc.NumDescriptors = FRAME_BUFFER_COUNT * 3  + 2;	// 프레임당 상수 버퍼 3개 (b0~b2) * 프레임 수 + 텍스처용 SRV(t0,t0) 2개
+		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
+		if(FAILED(hr))
+			return hr;
+		m_cbvHandle = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
+	}
+		
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// 상수 버퍼용 리소스 생성
+	{
+		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX ));
+		hr = d3dDevice->CreateCommittedResource(&heapProperties
+												, D3D12_HEAP_FLAG_NONE
+												, &constantBufferDesc
+												, D3D12_RESOURCE_STATE_GENERIC_READ
+												, nullptr, IID_PPV_ARGS(&m_cnstTmWld));
+		if(FAILED(hr))
+			return hr;
+	}
+	{
+		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX ));
+		hr = d3dDevice->CreateCommittedResource(&heapProperties
+												, D3D12_HEAP_FLAG_NONE
+												, &constantBufferDesc
+												, D3D12_RESOURCE_STATE_GENERIC_READ
+												, nullptr, IID_PPV_ARGS(&m_cnstTmViw));
+		if(FAILED(hr))
+			return hr;
+	}
+	{
+		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX));
+		hr = d3dDevice->CreateCommittedResource(&heapProperties
+												, D3D12_HEAP_FLAG_NONE
+												, &constantBufferDesc
+												, D3D12_RESOURCE_STATE_GENERIC_READ
+												, nullptr, IID_PPV_ARGS(&m_cnstTmPrj));
+		if(FAILED(hr))
+			return hr;
+	}
+
+	UINT d3dDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	const UINT bufferSize = G2::align256BufferSize(sizeof XMMATRIX);
+	// b0: Wld
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmWld->GetGPUVirtualAddress();
+		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
+		// offset 0
+		for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
+		{
+			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+			desc.BufferLocation = cbvGpuAddress;
+			desc.SizeInBytes = bufferSize;
+			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
+			cbvGpuAddress += bufferSize;
+			cbvCpuHandle.ptr += d3dDescriptorSize;
+		}
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrWld));
+		if(FAILED(hr)) return hr;
+	}
+
+	// b1: Viw
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmViw->GetGPUVirtualAddress();
+		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
+		cbvCpuHandle.ptr += d3dDescriptorSize * FRAME_BUFFER_COUNT; // offset to b1 region
+		for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
+		{
+			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+			desc.BufferLocation = cbvGpuAddress;
+			desc.SizeInBytes = bufferSize;
+			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
+			cbvGpuAddress += bufferSize;
+			cbvCpuHandle.ptr += d3dDescriptorSize;
+		}
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_cnstTmViw->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrViw));
+		if(FAILED(hr)) return hr;
+	}
+
+	// b2: Prj
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmPrj->GetGPUVirtualAddress();
+		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
+		cbvCpuHandle.ptr += d3dDescriptorSize * FRAME_BUFFER_COUNT * 2; // offset to b2 region
+		for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
+		{
+			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+			desc.BufferLocation = cbvGpuAddress;
+			desc.SizeInBytes = bufferSize;
+			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
+			cbvGpuAddress += bufferSize;
+			cbvCpuHandle.ptr += d3dDescriptorSize;
+		}
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_cnstTmPrj->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrPrj));
+		if(FAILED(hr)) return hr;
+	}
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// 4. 텍스처 생성 및 업로드 (CreateWICTextureFromFile + ResourceUploadBatch)
+	{
+		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
+		{
+			resourceUpload.Begin();
+			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_textureChecker.GetAddressOf());
+			if(FAILED(hr))
+				return hr;
+			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
+			auto uploadOp = resourceUpload.End(commandQueue);
+			uploadOp.wait();  // GPU 업로드 완료 대기
+		}
+	}
+	{
+		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
+		{
+			resourceUpload.Begin();
+			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/xlogo.png", m_textureXlogo.GetAddressOf());
+			if(FAILED(hr))
+				return hr;
+			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
+			auto uploadOp = resourceUpload.End(commandQueue);
+			uploadOp.wait();  // GPU 업로드 완료 대기
+		}
+	}
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// 5 텍스처 레지스터 SRV 디스크립터 생성 
+	// 3개 상수 레지스터 다음부터 텍스처 레지스터(셰이더 참고)
+	//FRAME_BUFFER_COUNT * 3
+	UINT baseSRVIndex = FRAME_BUFFER_COUNT * 3;
+	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
+
+	// texture viewer 생성
+	{
+		hCpuSrv.Offset(0, descriptorSize);
+		hGpuSrv.Offset(0, descriptorSize);
+		m_srvHandleChecker = hGpuSrv;					// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = m_textureChecker->GetDesc().Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		d3dDevice->CreateShaderResourceView(m_textureChecker.Get(), &srvDesc, hCpuSrv);
+	}
+	// t1 : xlogo
+	{
+		hCpuSrv.Offset(1, descriptorSize);
+		hGpuSrv.Offset(1, descriptorSize);
+		m_srvHandleXlogo = hGpuSrv;						// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = m_textureXlogo->GetDesc().Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		d3dDevice->CreateShaderResourceView(m_textureXlogo.Get(), &srvDesc, hCpuSrv);
+	}
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// 리소스 버텍스 버퍼
+	// 버텍스 버퍼는 CreateCommittedResource 내부에서 heap 사용?
+	// 자원의 생성은 해당 hlsl 맞게 설정하면 되나, 지금은 정점 버퍼 생성과 동시에 gpu에 업로드 함.
+	// commitList Reset-> command que  excute -> gpu wait 과정이 있어 맨 뒤로 옮김
+	{
+		// ※ 정점 버퍼 업로드가 있음. commandList->ResourceBarrier ..
+		// commandlist alloc 이 필요
+		hr = commandAlloc->Reset();
+		if(FAILED(hr))
+			return hr;
+		hr = commandList->Reset(commandAlloc, nullptr);  // PSO는 루프 내에서 설정 예정
+		if(FAILED(hr))
+			return hr;
+
 		Vertex cubeVertices[] =
 		{
-			{{-40.0f,  40.0f, -40.0f}, {  0,   0, 255, 255}, {0.0f, 1.0f}},
-			{{ 40.0f,  40.0f, -40.0f}, {  0, 255,   0, 255}, {1.0f, 1.0f}},
-			{{ 40.0f,  40.0f,  40.0f}, {  0, 255, 255, 255}, {1.0f, 1.0f}},
-			{{-40.0f,  40.0f,  40.0f}, {255,   0,   0, 255}, {0.0f, 1.0f}},
-			{{-40.0f, -40.0f, -40.0f}, {255,   0, 255, 255}, {0.0f, 0.0f}},
-			{{ 40.0f, -40.0f, -40.0f}, {255, 255,   0, 255}, {1.0f, 0.0f}},
-			{{ 40.0f, -40.0f,  40.0f}, {255, 255, 255, 255}, {1.0f, 0.0f}},
-			{{-40.0f, -40.0f,  40.0f}, { 70,  70,  70, 255}, {0.0f, 0.0f}},
+			{{-120.0f,  120.0f, -120.0f}, {  0,   0, 255, 255}, {1.0f, 0.0f}},
+			{{ 120.0f,  120.0f, -120.0f}, {  0, 255,   0, 255}, {0.0f, 0.0f}},
+			{{ 120.0f,  120.0f,  120.0f}, {  0, 255, 255, 255}, {0.0f, 0.0f}},
+			{{-120.0f,  120.0f,  120.0f}, {255,   0,   0, 255}, {1.0f, 0.0f}},
+			{{-120.0f, -120.0f, -120.0f}, {255,   0, 255, 255}, {1.0f, 1.0f}},
+			{{ 120.0f, -120.0f, -120.0f}, {255, 255,   0, 255}, {0.0f, 1.0f}},
+			{{ 120.0f, -120.0f,  120.0f}, {255, 255, 255, 255}, {0.0f, 1.0f}},
+			{{-120.0f, -120.0f,  120.0f}, { 70,  70,  70, 255}, {1.0f, 1.0f}},
 		};
 		const UINT vertexBufferSize = sizeof(cubeVertices);
 		ComPtr<ID3D12Resource> vertexBufferUpload;
@@ -333,175 +508,6 @@ int MainApp::InitResource()
 		m_viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
 		m_viewIdx.SizeInBytes = sizeof(indices);
 		m_viewIdx.Format = DXGI_FORMAT_R16_UINT;
-
-		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 4. 상수 + 텍스처 버퍼 heap 생성
-		// Create a descriptor heap for the constant buffers.
-		{
-			D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-			heapDesc.NumDescriptors = FRAME_BUFFER_COUNT * 3  + 2;	// 프레임당 상수 버퍼 3개 (b0~b2) * 프레임 수 + 텍스처용 SRV(t0,t0) 2개
-			heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-			heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
-			if(FAILED(hr))
-				return hr;
-			m_cbvHandle = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
-		}
-		
-		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 상수 버퍼용 리소스 생성
-		{
-			CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX ));
-			hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties
-													, D3D12_HEAP_FLAG_NONE
-													, &constantBufferDesc
-													, D3D12_RESOURCE_STATE_GENERIC_READ
-													, nullptr, IID_PPV_ARGS(&m_cnstTmWld));
-			if(FAILED(hr))
-				return hr;
-		}
-		{
-			CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX ));
-			hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties
-													, D3D12_HEAP_FLAG_NONE
-													, &constantBufferDesc
-													, D3D12_RESOURCE_STATE_GENERIC_READ
-													, nullptr, IID_PPV_ARGS(&m_cnstTmViw));
-			if(FAILED(hr))
-				return hr;
-		}
-		{
-			CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX));
-			hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties
-													, D3D12_HEAP_FLAG_NONE
-													, &constantBufferDesc
-													, D3D12_RESOURCE_STATE_GENERIC_READ
-													, nullptr, IID_PPV_ARGS(&m_cnstTmPrj));
-			if(FAILED(hr))
-				return hr;
-		}
-
-		UINT d3dDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		const UINT bufferSize = G2::align256BufferSize(sizeof XMMATRIX);
-		// b0: Wld
-		{
-			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmWld->GetGPUVirtualAddress();
-			D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
-			// offset 0
-			for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
-			{
-				D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-				desc.BufferLocation = cbvGpuAddress;
-				desc.SizeInBytes = bufferSize;
-				d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-				cbvGpuAddress += bufferSize;
-				cbvCpuHandle.ptr += d3dDescriptorSize;
-			}
-			CD3DX12_RANGE readRange(0, 0);
-			hr = m_cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrWld));
-			if(FAILED(hr)) return hr;
-		}
-
-		// b1: Viw
-		{
-			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmViw->GetGPUVirtualAddress();
-			D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
-			cbvCpuHandle.ptr += d3dDescriptorSize * FRAME_BUFFER_COUNT; // offset to b1 region
-			for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
-			{
-				D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-				desc.BufferLocation = cbvGpuAddress;
-				desc.SizeInBytes = bufferSize;
-				d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-				cbvGpuAddress += bufferSize;
-				cbvCpuHandle.ptr += d3dDescriptorSize;
-			}
-			CD3DX12_RANGE readRange(0, 0);
-			hr = m_cnstTmViw->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrViw));
-			if(FAILED(hr)) return hr;
-		}
-
-		// b2: Prj
-		{
-			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmPrj->GetGPUVirtualAddress();
-			D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
-			cbvCpuHandle.ptr += d3dDescriptorSize * FRAME_BUFFER_COUNT * 2; // offset to b2 region
-			for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
-			{
-				D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-				desc.BufferLocation = cbvGpuAddress;
-				desc.SizeInBytes = bufferSize;
-				d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-				cbvGpuAddress += bufferSize;
-				cbvCpuHandle.ptr += d3dDescriptorSize;
-			}
-			CD3DX12_RANGE readRange(0, 0);
-			hr = m_cnstTmPrj->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrPrj));
-			if(FAILED(hr)) return hr;
-		}
-
-		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 5 텍스처 생성 및 업로드 (CreateWICTextureFromFile + ResourceUploadBatch)
-		{
-			DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
-			{
-				resourceUpload.Begin();
-				hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_textureChecker.GetAddressOf());
-				if(FAILED(hr))
-					return hr;
-				auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
-				auto uploadOp = resourceUpload.End(commandQueue);
-				uploadOp.wait();  // GPU 업로드 완료 대기
-			}
-		}
-		{
-			DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
-			{
-				resourceUpload.Begin();
-				hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/xlogo.png", m_textureXlogo.GetAddressOf());
-				if(FAILED(hr))
-					return hr;
-				auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
-				auto uploadOp = resourceUpload.End(commandQueue);
-				uploadOp.wait();  // GPU 업로드 완료 대기
-			}
-		}
-
-		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 6 텍스처 레지스터 SRV 디스크립터 생성 
-		// 3개 상수 레지스터 다음부터 텍스처 레지스터(셰이더 참고)
-		//FRAME_BUFFER_COUNT * 3
-		UINT baseSRVIndex = FRAME_BUFFER_COUNT * 3;
-		UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
-		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
-
-		// texture viewer 생성
-		{
-			hCpuSrv.Offset(0, descriptorSize);
-			hGpuSrv.Offset(0, descriptorSize);
-			m_srvHandleChecker = hGpuSrv;					// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
-
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc.Format = m_textureChecker->GetDesc().Format;
-			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Texture2D.MipLevels = 1;
-			d3dDevice->CreateShaderResourceView(m_textureChecker.Get(), &srvDesc, hCpuSrv);
-		}
-		// t1 : xlogo
-		{
-			hCpuSrv.Offset(1, descriptorSize);
-			hGpuSrv.Offset(1, descriptorSize);
-			m_srvHandleXlogo = hGpuSrv;						// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc.Format = m_textureXlogo->GetDesc().Format;
-			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Texture2D.MipLevels = 1;
-			d3dDevice->CreateShaderResourceView(m_textureXlogo.Get(), &srvDesc, hCpuSrv);
-		}
-
 		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// 마지막으로 commandList를 닫고
 		hr = commandList->Close();
