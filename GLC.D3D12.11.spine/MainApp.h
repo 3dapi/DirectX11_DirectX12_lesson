@@ -19,7 +19,7 @@ using Microsoft::WRL::ComPtr;
 
 struct Vertex
 {
-	XMFLOAT3 p;
+	XMFLOAT2 p;
 	union
 	{
 		uint8_t d[4];
@@ -42,24 +42,13 @@ protected:
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_cbvHandle			{};
 	ComPtr<ID3D12Resource>			m_rscVtx			{};
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
+	ComPtr<ID3D12Resource>			m_textureRsc		{};		// assets/res_checker.png
+	D3D12_GPU_DESCRIPTOR_HANDLE		m_textureHandle		{};		// checker SRV GPU 핸들
 
-	XMMATRIX						m_tmWld				= XMMatrixIdentity();
 	ComPtr<ID3D12Resource>			m_cnstTmWld			{};
 	uint8_t*						m_ptrWld			{};
-	XMMATRIX						m_tmViw				= XMMatrixIdentity();
-	ComPtr<ID3D12Resource>			m_cnstTmViw			{};
-	uint8_t*						m_ptrViw			{};
-	XMMATRIX						m_tmPrj				= XMMatrixIdentity();
-	ComPtr<ID3D12Resource>			m_cnstTmPrj			{};
-	uint8_t*						m_ptrPrj			{};
-
 	double							m_angle				{};
 
-	ComPtr<ID3D12Resource>			m_textureChecker	{};		// assets/res_checker.png
-	ComPtr<ID3D12Resource>			m_textureXlogo		{};		// assets/xlogo.png
-	ComPtr<ID3D12DescriptorHeap>	m_srvHeap2x			{};		// 텍스처용 힙
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleChecker	{};		// checker SRV GPU 핸들
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleXlogo	{};		// checker SRV GPU 핸들
 public:
 	MainApp();
 	virtual ~MainApp();
