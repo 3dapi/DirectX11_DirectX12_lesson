@@ -10,79 +10,45 @@
 #include <D3Dcompiler.h>
 #include <DirectXMath.h>
 #include <wrl.h>
+#include <spine/spine.h>
 #include "G2Base.h"
+#include "G2Util.h"
+
 using namespace DirectX;
-using namespace Microsoft::WRL;
-
-constexpr inline unsigned ConstantBufferByteSize(unsigned byteSize)
-{
-	// Constant buffers must be a multiple of the minimum hardware
-	// allocation size (usually 256 bytes).  So round up to nearest
-	// multiple of 256.  We do this by adding 255 and then masking off
-	// the lower 2 bytes which store all bits < 256.
-	// Example: Suppose byteSize = 300.
-	// (300 + 255) & ~255
-	// 555 & ~255
-	// 0x022B & ~0x00ff
-	// 0x022B & 0xff00
-	// 0x0200
-	// 512
-	return (byteSize + 255) & ~255;
-}
-
-struct RenderPass
-{
-	ComPtr<ID3D12DescriptorHeap>	cbvHeap			{};
-	ComPtr<ID3D12RootSignature>		rootSignature	{};
-	ComPtr<ID3D12PipelineState>		pipelineState	{};
-	D3D12_VERTEX_BUFFER_VIEW		viewVtx			{};
-	D3D12_INDEX_BUFFER_VIEW			viewIdx			{};
-	UINT							numVtx			{};
-	UINT							numIdx			{};
-	D3D12_GPU_DESCRIPTOR_HANDLE		cbvHandle		{};
-	void Destroy()
-	{
-		cbvHeap.Reset();
-		rootSignature.Reset();
-		pipelineState.Reset();
-		viewVtx = {};
-		viewIdx = {};
-		numVtx = 0;
-		numIdx = 0;
-		cbvHandle.ptr = 0;
-	}
-};
+using Microsoft::WRL::ComPtr;
 
 struct ConstBufMVP
 {
-	DirectX::XMFLOAT4X4 m{};
-	DirectX::XMFLOAT4X4 v{};
-	DirectX::XMFLOAT4X4 p{};
-	static const unsigned ALIGNED_SIZE;
+	XMMATRIX m{};
+	XMMATRIX v{};
+	XMMATRIX p{};
+	static const unsigned ALIGNED_SIZE = G2::align256BufferSize(sizeof(XMMATRIX)*3);
 };
 
 struct Vertex
 {
-	DirectX::XMFLOAT3 p;
+	XMFLOAT3 p;
 	uint8_t d[4];
 };
 
-
-class MainApp
+class MainApp : public spine::TextureLoader
 {
 protected:
 	// Direct3D resources for cube geometry.
-	RenderPass								m_renderPass;
-	ComPtr<ID3D12Resource>					m_rscVtx;
-	ComPtr<ID3D12Resource>					m_rscIdx;
-	ComPtr<ID3D12Resource>					m_cnstMVP;
-	ConstBufMVP								m_cnstBufMVP{};
-	uint8_t*								m_csnstPtrMVP{};
-
-	// Variables used with the rendering loop.
-	float	m_radiansPerSecond	{XM_PIDIV4};
-	float	m_angle{};
-	bool	m_tracking{};
+	ComPtr<ID3D12DescriptorHeap>	m_cbvHeap			{};
+	ComPtr<ID3D12RootSignature>		m_rootSignature		{};
+	ComPtr<ID3D12PipelineState>		m_pipelineState		{};
+	D3D12_VERTEX_BUFFER_VIEW		m_viewVtx			{};
+	D3D12_INDEX_BUFFER_VIEW			m_viewIdx			{};
+	UINT							m_numVtx			{};
+	UINT							m_numIdx			{};
+	D3D12_GPU_DESCRIPTOR_HANDLE		m_cbvHandle			{};
+	ComPtr<ID3D12Resource>			m_rscVtx			{};
+	ComPtr<ID3D12Resource>			m_rscIdx			{};
+	ComPtr<ID3D12Resource>			m_cnstMVP			{};
+	ConstBufMVP						m_cnstBufMVP		{};
+	uint8_t*						m_csnstPtrMVP		{};
+	double							m_angle				{};
 public:
 	MainApp();
 	virtual ~MainApp();
@@ -94,8 +60,10 @@ public:
 
 	int InitResource();
 	int InitConstValue();
-	void Rotate(float radians);
-};
 
+public:
+	void load(spine::AtlasPage& page, const spine::String& path) override;
+	void unload(void* texture) override;
+};
 
 #endif

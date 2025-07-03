@@ -729,7 +729,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE D3DApp::DepthStencilView() const
 
 int D3DApp::Init()
 {
-	m_pmain = new class MainApp;
+	m_pmain = new MainApp;
 	if (!m_pmain)
 		return E_FAIL;
 	if (FAILED(m_pmain->Init()))

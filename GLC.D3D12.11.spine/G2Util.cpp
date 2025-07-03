@@ -14,7 +14,6 @@
 #include <DirectXColors.h>
 #include "G2Base.h"
 #include "G2Util.h"
-#include "DDSTextureLoader.h"
 
 std::wstring G2::StringToWString(const std::string& str)
 {
@@ -24,7 +23,7 @@ std::wstring G2::StringToWString(const std::string& str)
 	return wstr;
 }
 
-HRESULT G2::DXCompileShaderFromFile(const std::string& szFileName, const std::string& szEntryPoint, const std::string& szShaderModel, ID3DBlob** ppBlobOut)
+HRESULT G2::DXCompileShaderFromFile(const std::string& szFileName, const std::string& szShaderModel, const std::string& szEntryPoint, ID3DBlob** ppBlobOut)
 {
 	HRESULT hr = S_OK;
 	DWORD dwShaderFlags{};
