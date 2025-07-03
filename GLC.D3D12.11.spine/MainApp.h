@@ -17,14 +17,6 @@
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
 
-struct ConstBufMVP
-{
-	XMMATRIX m{};
-	XMMATRIX v{};
-	XMMATRIX p{};
-	static const unsigned ALIGNED_SIZE = G2::align256BufferSize(sizeof(XMMATRIX)*3);
-};
-
 struct Vertex
 {
 	XMFLOAT3 p;
@@ -50,12 +42,20 @@ protected:
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_cbvHandle			{};
 	ComPtr<ID3D12Resource>			m_rscVtx			{};
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
-	ComPtr<ID3D12Resource>			m_cnstMVP			{};
-	ConstBufMVP						m_cnstBufMVP		{};
-	uint8_t*						m_csnstPtrMVP		{};
+
+	XMMATRIX						m_tmWld				= XMMatrixIdentity();
+	ComPtr<ID3D12Resource>			m_cnstTmWld			{};
+	uint8_t*						m_ptrWld			{};
+	XMMATRIX						m_tmViw				= XMMatrixIdentity();
+	ComPtr<ID3D12Resource>			m_cnstTmViw			{};
+	uint8_t*						m_ptrViw			{};
+	XMMATRIX						m_tmPrj				= XMMatrixIdentity();
+	ComPtr<ID3D12Resource>			m_cnstTmPrj			{};
+	uint8_t*						m_ptrPrj			{};
+
 	double							m_angle				{};
 
-	ComPtr<ID3D12Resource>			m_checkerTexture		{};
+	ComPtr<ID3D12Resource>			m_checkerTexture	{};
 	ComPtr<ID3D12DescriptorHeap>	m_srvHeap			{};         // 텍스처용 힙
 	D3D12_GPU_DESCRIPTOR_HANDLE		 m_srvHandle		{};     // 텍스처 SRV GPU 핸들
 public:

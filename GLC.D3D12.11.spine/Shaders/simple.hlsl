@@ -1,17 +1,10 @@
 
-Texture2D			gTexDif   : register(t0);              // diffuse texture
-SamplerState		gSmpLinear : register(s0);              // sampler state
+cbuffer MVP0 : register(b0) { matrix mtWld; }		//						cmdList->SetGraphicsRootDescriptorTable(0, handleWld);  // b0
+cbuffer MVP1 : register(b1) { matrix mtViw; }		//						cmdList->SetGraphicsRootDescriptorTable(1, handleViw);  // b1
+cbuffer MVP2 : register(b2) { matrix mtPrj; }		//						cmdList->SetGraphicsRootDescriptorTable(2, handlePrj);  // b2
 
-cbuffer MVP0 : register(b0)
-{
-	matrix mtWld;
-}
-
-cbuffer MVP0 : register(b1)
-{
-	matrix mtViw;
-	matrix mtPrj;
-}
+Texture2D			gTexDif   : register(t0);		// diffuse texture		cmdList->SetGraphicsRootDescriptorTable(3, m_srvHandle); // t0
+SamplerState		gSmpLinear : register(s0);		// sampler state
 
 struct VS_IN
 {
