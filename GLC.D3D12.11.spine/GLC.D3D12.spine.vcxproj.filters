@@ -74,8 +74,6 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config">
-      <Filter>src_common</Filter>
-    </None>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>
