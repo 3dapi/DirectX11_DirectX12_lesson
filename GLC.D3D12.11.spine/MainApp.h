@@ -55,9 +55,11 @@ protected:
 
 	double							m_angle				{};
 
-	ComPtr<ID3D12Resource>			m_checkerTexture	{};
-	ComPtr<ID3D12DescriptorHeap>	m_srvHeap			{};         // 텍스처용 힙
-	D3D12_GPU_DESCRIPTOR_HANDLE		 m_srvHandle		{};     // 텍스처 SRV GPU 핸들
+	ComPtr<ID3D12Resource>			m_textureChecker	{};		// assets/res_checker.png
+	ComPtr<ID3D12Resource>			m_textureXlogo		{};		// assets/xlogo.png
+	ComPtr<ID3D12DescriptorHeap>	m_srvHeap2x			{};		// 텍스처용 힙
+	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleChecker	{};		// checker SRV GPU 핸들
+	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleXlogo	{};		// checker SRV GPU 핸들
 public:
 	MainApp();
 	virtual ~MainApp();
