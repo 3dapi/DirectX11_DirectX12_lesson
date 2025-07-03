@@ -9,6 +9,8 @@
 #include <string>
 #include <wrl.h>
 #include <shellapi.h>
+#include <WICTextureLoader.h>
+#include <ResourceUploadBatch.h>
 
 #include "d3dx12.h"
 #include "G2Base.h"
@@ -81,7 +83,7 @@ int MainApp::Update()
 	if (true)
 	{
 		m_angle += deltaTime ;
-		m_cnstBufMVP.m = XMMatrixRotationY(m_angle);
+		m_cnstBufMVP.m = XMMatrixRotationY((float)m_angle);
 	
 		auto currentFrameIndex = *(std::any_cast<UINT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
 		UINT8* destination = m_csnstPtrMVP + (currentFrameIndex * ConstBufMVP::ALIGNED_SIZE);
@@ -98,6 +100,12 @@ int MainApp::Render()
     // 디스크립터 힙 설정
     ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
     cmdList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+
+	//4. 루트 시그니처 바인딩 (Render 함수에서)
+	cmdList->SetDescriptorHeaps(1, m_cbvHeap.GetAddressOf());
+	cmdList->SetGraphicsRootDescriptorTable(0, m_cbvHandle);   // b0: constant buffer
+	cmdList->SetGraphicsRootDescriptorTable(1, m_srvHandle);   // t0: texture SRV
 
     // 렌더 패스별 루프
     //for (const auto& pass : m_renderPasses)
@@ -187,10 +195,11 @@ int MainApp::InitResource()
 	// Create the pipeline state once the shaders are loaded.
 	{
 
-		static const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+		const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 		{
-			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,                                   0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "COLOR"   , 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, sizeof(XMFLOAT3)                   , D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT   , 0, sizeof(XMFLOAT3) + sizeof(uint32_t), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		};
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
@@ -216,14 +225,14 @@ int MainApp::InitResource()
 	{
 		Vertex cubeVertices[] =
 		{
-			{ { -40.0f,  40.0f, -40.0f }, {   0,   0, 255, 255 } },
-			{ {  40.0f,  40.0f, -40.0f }, {   0, 255,   0, 255 } },
-			{ {  40.0f,  40.0f,  40.0f }, {   0, 255, 255, 255 } },
-			{ { -40.0f,  40.0f,  40.0f }, { 255,   0,   0, 255 } },
-			{ { -40.0f, -40.0f, -40.0f }, { 255,   0, 255, 255 } },
-			{ {  40.0f, -40.0f, -40.0f }, { 255, 255,   0, 255 } },
-			{ {  40.0f, -40.0f,  40.0f }, { 255, 255, 255, 255 } },
-			{ { -40.0f, -40.0f,  40.0f }, {  70,  70,  70, 255 } },
+			{ { -40.0f,  40.0f, -40.0f }, {   0,   0, 255, 255 },{   0.0f,  1.0f }  },
+			{ {  40.0f,  40.0f, -40.0f }, {   0, 255,   0, 255 },{   1.0f,  1.0f }  },
+			{ {  40.0f,  40.0f,  40.0f }, {   0, 255, 255, 255 },{   1.0f,  1.0f }  },
+			{ { -40.0f,  40.0f,  40.0f }, { 255,   0,   0, 255 },{   0.0f,  1.0f }  },
+			{ { -40.0f, -40.0f, -40.0f }, { 255,   0, 255, 255 },{   0.0f,  0.0f }  },
+			{ {  40.0f, -40.0f, -40.0f }, { 255, 255,   0, 255 },{   1.0f,  0.0f }  },
+			{ {  40.0f, -40.0f,  40.0f }, { 255, 255, 255, 255 },{   1.0f,  0.0f }  },
+			{ { -40.0f, -40.0f,  40.0f }, {  70,  70,  70, 255 },{   0.0f,  0.0f }  },
 		};
 		const UINT vertexBufferSize = sizeof(cubeVertices);
 		ComPtr<ID3D12Resource> vertexBufferUpload;
@@ -290,10 +299,12 @@ int MainApp::InitResource()
 		// Create a descriptor heap for the constant buffers.
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-				heapDesc.NumDescriptors = FRAME_BUFFER_COUNT;
+				heapDesc.NumDescriptors = FRAME_BUFFER_COUNT+1;
 				heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 				heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
+			if(FAILED(hr))
+				return hr;
 			m_cbvHandle = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
 		}
 
@@ -342,6 +353,49 @@ int MainApp::InitResource()
 		m_viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
 		m_viewIdx.SizeInBytes = sizeof(indices);
 		m_viewIdx.Format = DXGI_FORMAT_R16_UINT;
+
+
+
+		// 1. 디스크립터 힙 생성 시 SRV 1개 추가
+		//D3D12_DESCRIPTOR_HEAP_DESC heapDesc={};
+		//heapDesc.NumDescriptors=FRAME_BUFFER_COUNT + 1;
+		//heapDesc.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		//heapDesc.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		//hr=d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
+		//if(FAILED(hr))
+		//	return hr;
+		//m_cbvHandle=m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
+
+		// ─────────────────────────────────────────────────────
+		// 2. 텍스처 생성 및 업로드 (CreateWICTextureFromFile + ResourceUploadBatch)
+		// ─────────────────────────────────────────────────────
+
+		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
+		{
+			resourceUpload.Begin();
+			hr=DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_checkerTexture.GetAddressOf());
+			if(FAILED(hr))
+				return hr;
+			auto commandQueue=std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
+			auto uploadOp=resourceUpload.End(commandQueue);
+			uploadOp.wait();  // GPU 업로드 완료 대기
+		}
+
+
+		// 3. SRV 디스크립터 생성
+		UINT descriptorSize=d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), FRAME_BUFFER_COUNT, descriptorSize);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), FRAME_BUFFER_COUNT, descriptorSize);
+		m_srvHandle=hGpuSrv;
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc={};
+		srvDesc.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format=m_checkerTexture->GetDesc().Format;
+		srvDesc.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels=1;
+
+		d3dDevice->CreateShaderResourceView(m_checkerTexture.Get(), &srvDesc, hCpuSrv);
 
 		D3DApp::getInstance()-> WaitForGpu();
 	}

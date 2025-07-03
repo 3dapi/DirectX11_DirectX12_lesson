@@ -28,7 +28,12 @@ struct ConstBufMVP
 struct Vertex
 {
 	XMFLOAT3 p;
-	uint8_t d[4];
+	union
+	{
+		uint8_t d[4];
+		uint32_t c;
+	};
+	XMFLOAT2 t;
 };
 
 class MainApp : public spine::TextureLoader
@@ -49,6 +54,10 @@ protected:
 	ConstBufMVP						m_cnstBufMVP		{};
 	uint8_t*						m_csnstPtrMVP		{};
 	double							m_angle				{};
+
+	ComPtr<ID3D12Resource>			m_checkerTexture		{};
+	ComPtr<ID3D12DescriptorHeap>	m_srvHeap			{};         // 텍스처용 힙
+	D3D12_GPU_DESCRIPTOR_HANDLE		 m_srvHandle		{};     // 텍스처 SRV GPU 핸들
 public:
 	MainApp();
 	virtual ~MainApp();
