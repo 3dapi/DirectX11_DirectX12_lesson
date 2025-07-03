@@ -10,7 +10,7 @@
 D3DApp* D3DApp::m_pAppMain{};
 D3DApp::D3DApp()
 {
-	m_name = "DirectX 11 App";
+	m_name = "DirectX 12 App";
 }
 
 LRESULT WINAPI D3DApp::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
