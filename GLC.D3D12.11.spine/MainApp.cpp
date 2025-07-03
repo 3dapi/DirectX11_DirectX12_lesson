@@ -47,7 +47,10 @@ int MainApp::Init()
 	m_timer.Reset();
 
 	HRESULT hr = S_OK;
-	hr = InitResource();
+	hr = InitForDevice();
+	if(FAILED(hr))
+		return hr;
+	hr = InitForResource();
 	if(FAILED(hr))
 		return hr;
 	hr = InitConstValue();
@@ -148,16 +151,10 @@ int MainApp::Render()
 }
 
 
-int MainApp::InitResource()
+int MainApp::InitForDevice()
 {
 	HRESULT hr = S_OK;
 	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
-	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
-	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
-
-	hr = commandAlloc->Reset();
-	if(FAILED(hr))
-		return hr;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// ★★★★★★★★★★★★★★★
@@ -169,7 +166,7 @@ int MainApp::InitResource()
 	// Create a descriptor heap for the constant buffers.
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = FRAME_BUFFER_COUNT * NUM_CB  + NUM_TX;	// 프레임당 상수 버퍼 3개 (b0~b2) * 프레임 수 + 텍스처용 SRV(t0,t0) 2개
+		heapDesc.NumDescriptors = FRAME_BUFFER_COUNT * (NUM_CB  + NUM_TX);	// 프레임당 상수 버퍼 3개 (b0~b2) * 프레임 수 + 텍스처용 SRV(t0,t0) 2개 대신 넉넉하게 설정
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
@@ -336,6 +333,22 @@ int MainApp::InitResource()
 		}
 	}
 
+	return S_OK;
+}
+
+int MainApp::InitForResource()
+{
+	auto d3d          = IG2GraphicsD3D::getInstance();
+	auto d3dDevice    = std::any_cast<ID3D12Device*             >(d3d->GetDevice()          );
+	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*   >(d3d->GetCommandAllocator());
+	auto commandList  = std::any_cast<ID3D12GraphicsCommandList*>(d3d->GetCommandList()     );
+
+	HRESULT hr = S_OK;
+
+	hr = commandAlloc->Reset();
+	if(FAILED(hr))
+		return hr;
+	
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 7. 리소스 버텍스 버퍼 업로드
 	// 버텍스 버퍼는 CreateCommittedResource 내부에서 heap 사용?
@@ -438,9 +451,8 @@ int MainApp::InitResource()
 
 	// gpu 완료 될 때 까지 기다림
 	D3DApp::getInstance()-> WaitForGpu();
-
-	return S_OK;
 }
+
 
 int MainApp::InitConstValue()
 {

@@ -58,7 +58,8 @@ public:
 	virtual int Update();
 	virtual int Render();
 
-	int InitResource();
+	int InitForDevice();
+	int InitForResource();
 	int InitConstValue();
 
 public:
