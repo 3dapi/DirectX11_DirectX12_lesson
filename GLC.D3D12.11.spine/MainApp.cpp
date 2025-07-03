@@ -140,44 +140,36 @@ int MainApp::InitResource()
 
 	// Create a root signature with a single constant buffer slot.
 	{
-		// 1. Descriptor Range (CBV b0 하나)
-		D3D12_DESCRIPTOR_RANGE descriptorRange = {};
-		descriptorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV; // CBV 타입
-		descriptorRange.NumDescriptors = 1;                          // 개수: 1개
-		descriptorRange.BaseShaderRegister = 0;                      // b0
-		descriptorRange.RegisterSpace = 0;                           // space 0
-		descriptorRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		CD3DX12_DESCRIPTOR_RANGE cbvRange;
+		cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0); // b0
 
-		// 2. Root Parameter (Descriptor Table)
-		D3D12_ROOT_PARAMETER rootParameter = {};
-		rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		rootParameter.DescriptorTable.NumDescriptorRanges = 1;
-		rootParameter.DescriptorTable.pDescriptorRanges = &descriptorRange;
-		rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+		CD3DX12_DESCRIPTOR_RANGE srvRange;
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
 
-		// 3. Root Signature Flags
-		D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+		CD3DX12_ROOT_PARAMETER rootParams[2];
+		rootParams[0].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_VERTEX);
+		rootParams[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc;
+		rootSigDesc.Init(
+			_countof(rootParams),
+			rootParams,
+			0,
+			nullptr,
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
 			D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
-
-		// 4. Root Signature Desc
-		D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
-		rootSignatureDesc.NumParameters = 1;
-		rootSignatureDesc.pParameters = &rootParameter;
-		rootSignatureDesc.NumStaticSamplers = 0;
-		rootSignatureDesc.pStaticSamplers = nullptr;
-		rootSignatureDesc.Flags = rootSignatureFlags;
+			D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+			D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS
+		);
 
 		ComPtr<ID3DBlob> pSignature{}, pError{};
-		hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, pSignature.GetAddressOf(), pError.GetAddressOf());
+		HRESULT hr = D3D12SerializeRootSignature( &rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &pSignature, &pError);
 		if (FAILED(hr))
 			return hr;
-		hr = d3dDevice->CreateRootSignature(0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature));
+		hr = d3dDevice->CreateRootSignature( 0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature));
 		if (FAILED(hr))
 			return hr;
+
 	}
 
 
