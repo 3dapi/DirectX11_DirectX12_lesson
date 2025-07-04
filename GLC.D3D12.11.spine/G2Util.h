@@ -74,7 +74,7 @@ constexpr inline unsigned align256BufferSize(unsigned byteSize)
 	return (byteSize + 255) & ~255;
 }
 
-std::wstring StringToWString(const std::string& str);
+std::wstring ansiToWstring(const std::string& str);
 HRESULT		DXCompileShaderFromFile(const std::string& szFileName, const std::string& szShaderModel, const std::string& szEntryPoint, ID3DBlob** ppBlobOut=nullptr);
 
 //std::tuple<HRESULT, ID3D11ShaderResourceView*, ID3D11Resource*>

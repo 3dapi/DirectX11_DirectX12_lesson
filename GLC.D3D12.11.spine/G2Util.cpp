@@ -15,7 +15,7 @@
 #include "G2Base.h"
 #include "G2Util.h"
 
-std::wstring G2::StringToWString(const std::string& str)
+std::wstring G2::ansiToWstring(const std::string& str)
 {
 	int len = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, {}, 0);
 	std::wstring wstr(len, 0);
@@ -30,7 +30,7 @@ HRESULT G2::DXCompileShaderFromFile(const std::string& szFileName, const std::st
 #ifdef _DEBUG
 	dwShaderFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
-	auto wFileName = G2::StringToWString(szFileName);
+	auto wFileName = G2::ansiToWstring(szFileName);
 	ID3DBlob* pErrorBlob {};
 	hr = D3DCompileFromFile(wFileName.c_str(), {}, {}, szEntryPoint.c_str(), szShaderModel.c_str(), dwShaderFlags, 0, ppBlobOut, &pErrorBlob);
 	if (FAILED(hr))

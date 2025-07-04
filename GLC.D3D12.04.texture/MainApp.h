@@ -39,13 +39,17 @@ protected:
 	UINT							m_numVtx			{};
 	UINT							m_numIdx			{};
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_cbvHandle			{};
-	ComPtr<ID3D12Resource>			m_rscVtxGPU			{};
-	ComPtr<ID3D12Resource>			m_rscIdxGPU			{};
-	ComPtr<ID3D12Resource>			m_textureRsc		{};		// assets/res_checker.png
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_textureHandle		{};		// checker SRV GPU 핸들
 
-	ComPtr<ID3D12Resource>			m_cnstTmWld			{};
-	uint8_t*						m_ptrWld			{};
+	ComPtr<ID3D12Resource>			m_rscVtxGPU			{};			// vertex buffer default heap resource
+	ComPtr<ID3D12Resource>			m_rscVtxCPU			{};			// vertex buffer upload heap resource
+	ComPtr<ID3D12Resource>			m_rscIdxGPU			{};			// index buffer default heap resource
+	ComPtr<ID3D12Resource>			m_rscIdxCPU			{};			// index buffer upload heap resource
+
+	ComPtr<ID3D12Resource>			m_spineTextureRsc	{};		// assets/res_checker.png
+	D3D12_GPU_DESCRIPTOR_HANDLE		m_spineTexture		{};		// checker SRV GPU 핸들
+
+	ComPtr<ID3D12Resource>			m_cnstMVP			{};
+	uint8_t*						m_ptrMVP			{};
 
 public:
 	MainApp();

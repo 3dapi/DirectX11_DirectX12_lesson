@@ -59,11 +59,11 @@ int MainApp::Destroy()
 	m_rscVtxGPU		.Reset();
 	m_rscIdxGPU		.Reset();
 
-	m_cnstTmWld		->Unmap(0, nullptr);
-	m_cnstTmWld		.Reset();
-	m_ptrWld		= {};
-	m_textureRsc	.Reset();
-	m_textureHandle	= {};
+	m_cnstMVP		->Unmap(0, nullptr);
+	m_cnstMVP		.Reset();
+	m_ptrMVP		= {};
+	m_spineTextureRsc	.Reset();
+	m_spineTexture	= {};
 
 	return S_OK;
 }
@@ -87,7 +87,7 @@ int MainApp::Update()
 
 	auto currentFrameIndex = *(std::any_cast<UINT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
 	{
-		uint8_t* dest = m_ptrWld + (currentFrameIndex * G2::align256BufferSize(sizeof(XMMATRIX)));
+		uint8_t* dest = m_ptrMVP + (currentFrameIndex * G2::align256BufferSize(sizeof(XMMATRIX)));
 		memcpy(dest, &mtMVP, sizeof(mtMVP));
 	}
 
@@ -115,7 +115,7 @@ int MainApp::Render()
 	cmdList->SetGraphicsRootDescriptorTable(0, handleMVP);
 
 	// 4. SRV 핸들 바인딩 (root parameter index 상수 레지스터 다음 3 = t0, 4= t1)
-	cmdList->SetGraphicsRootDescriptorTable(1, m_textureHandle);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_spineTexture);
 
 	// 5. 파이프라인 연결
 	cmdList->SetPipelineState(m_pipelineState.Get());
@@ -138,13 +138,6 @@ int MainApp::InitResource()
 {
 	HRESULT hr = S_OK;
 	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
-	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
-	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
-
-	hr = commandAlloc->Reset();
-	if(FAILED(hr))
-		return hr;
-
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// ★★★★★★★★★★★★★★★
 	const UINT NUM_CB = 1;						// 셰이더 상수 레지스터 숫자
@@ -252,7 +245,7 @@ int MainApp::InitResource()
 												, D3D12_HEAP_FLAG_NONE
 												, &constantBufferDesc
 												, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&m_cnstTmWld));
+												, nullptr, IID_PPV_ARGS(&m_cnstMVP));
 		if(FAILED(hr))
 			return hr;
 	}
@@ -262,10 +255,10 @@ int MainApp::InitResource()
 		const UINT bufferSize = G2::align256BufferSize(sizeof XMMATRIX);
 		// b0: Wld
 		{
-			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmWld->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstMVP->GetGPUVirtualAddress();
 			D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
 			// offset 0
-			for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
+			for(int n=0; n<FRAME_BUFFER_COUNT; ++n)
 			{
 				D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 				desc.BufferLocation = cbvGpuAddress;
@@ -275,7 +268,7 @@ int MainApp::InitResource()
 				cbvCpuHandle.ptr += d3dDescriptorSize;
 			}
 			CD3DX12_RANGE readRange(0, 0);
-			hr = m_cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrWld));
+			hr = m_cnstMVP->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrMVP));
 			if(FAILED(hr)) return hr;
 		}
 	}
@@ -286,7 +279,7 @@ int MainApp::InitResource()
 		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
 		{
 			resourceUpload.Begin();
-			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_textureRsc.GetAddressOf());
+			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_spineTextureRsc.GetAddressOf());
 			if(FAILED(hr))
 				return hr;
 			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
@@ -311,14 +304,14 @@ int MainApp::InitResource()
 		{
 			hCpuSrv.Offset(0, descriptorSize);			//
 			hGpuSrv.Offset(0, descriptorSize);			//
-			m_textureHandle = hGpuSrv;					// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
+			m_spineTexture = hGpuSrv;					// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
 
 			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc.Format = m_textureRsc->GetDesc().Format;
+			srvDesc.Format = m_spineTextureRsc->GetDesc().Format;
 			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 			srvDesc.Texture2D.MipLevels = 1;
-			d3dDevice->CreateShaderResourceView(m_textureRsc.Get(), &srvDesc, hCpuSrv);
+			d3dDevice->CreateShaderResourceView(m_spineTextureRsc.Get(), &srvDesc, hCpuSrv);
 		}
 	}
 
@@ -334,7 +327,6 @@ int MainApp::InitResource()
 	};
 	uint16_t indices[] = { 0, 1, 2, 0, 2, 3, };
 
-	ComPtr<ID3D12Resource> vtxBufUpload{};
 	{
 		m_numVtx = sizeof(cubeVertices) / sizeof(cubeVertices[0]);
 		// vertex buffer
@@ -346,18 +338,18 @@ int MainApp::InitResource()
 		if (FAILED(hr))
 			return hr;
 		// CPU 업로드 버퍼
-		hr = d3dDevice->CreateCommittedResource(&vtxHeapPropsUpload, D3D12_HEAP_FLAG_NONE, &vtxBufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vtxBufUpload));
+		hr = d3dDevice->CreateCommittedResource(&vtxHeapPropsUpload, D3D12_HEAP_FLAG_NONE, &vtxBufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_rscVtxCPU));
 		if (FAILED(hr))
 			return hr;
 		// Create vertex/index buffer views.
 		m_viewVtx.BufferLocation = m_rscVtxGPU->GetGPUVirtualAddress();
 		m_viewVtx.StrideInBytes = sizeof(Vertex);
 		m_viewVtx.SizeInBytes = sizeof(cubeVertices);
-		m_numIdx = sizeof(indices) / sizeof(indices[0]);
 	}
 
-	ComPtr<ID3D12Resource> idxBufUpload{};
 	{
+		m_numIdx = sizeof(indices) / sizeof(indices[0]);
+
 		// index buffer
 		CD3DX12_HEAP_PROPERTIES idxHeapPropsGPU		(D3D12_HEAP_TYPE_DEFAULT);
 		CD3DX12_HEAP_PROPERTIES idxHeapPropsUpload	(D3D12_HEAP_TYPE_UPLOAD);
@@ -367,7 +359,7 @@ int MainApp::InitResource()
 		if (FAILED(hr))
 			return hr;
 		// CPU 업로드 버퍼
-		hr = d3dDevice->CreateCommittedResource(&idxHeapPropsUpload, D3D12_HEAP_FLAG_NONE, &idxBufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&idxBufUpload));
+		hr = d3dDevice->CreateCommittedResource(&idxHeapPropsUpload, D3D12_HEAP_FLAG_NONE, &idxBufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_rscIdxCPU));
 		if (FAILED(hr))
 			return hr;
 		// Create vertex/index buffer views.
@@ -376,6 +368,12 @@ int MainApp::InitResource()
 		m_viewIdx.Format = DXGI_FORMAT_R16_UINT;
 	}
 
+	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
+	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+
+	hr = commandAlloc->Reset();
+	if(FAILED(hr))
+		return hr;
 	hr = commandList->Reset(commandAlloc, nullptr);  // PSO는 루프 내에서 설정 예정
 	if(FAILED(hr))
 		return hr;
@@ -387,7 +385,7 @@ int MainApp::InitResource()
 			vertexData.pData      = reinterpret_cast<const BYTE*>(cubeVertices);
 			vertexData.RowPitch   = m_numVtx * sizeof(Vertex);
 			vertexData.SlicePitch = m_numVtx * sizeof(Vertex);
-			UpdateSubresources(commandList, m_rscVtxGPU.Get(), vtxBufUpload.Get(), 0, 0, 1, &vertexData);
+			UpdateSubresources(commandList, m_rscVtxGPU.Get(), m_rscVtxCPU.Get(), 0, 0, 1, &vertexData);
 			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_rscVtxGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 			commandList->ResourceBarrier(1, &barrier);
 		}
@@ -399,7 +397,7 @@ int MainApp::InitResource()
 			indexData.pData      = reinterpret_cast<const BYTE*>(indices);
 			indexData.RowPitch   = m_numIdx * sizeof(uint16_t);
 			indexData.SlicePitch = m_numIdx * sizeof(uint16_t);
-			UpdateSubresources(commandList, m_rscIdxGPU.Get(), idxBufUpload.Get(), 0, 0, 1, &indexData);
+			UpdateSubresources(commandList, m_rscIdxGPU.Get(), m_rscIdxCPU.Get(), 0, 0, 1, &indexData);
 			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_rscIdxGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 			commandList->ResourceBarrier(1, &barrier);
 		}
@@ -419,8 +417,8 @@ int MainApp::InitResource()
 	// 이들은 업로드 완료 까지 유효해야 함. 중간에 
 	//Vertex cubeVertices
 	//uint16_t indices
-	//ComPtr<ID3D12Resource> vtxBufUpload
-	//ComPtr<ID3D12Resource> idxBufUpload
+	//ComPtr<ID3D12Resource> m_rscVtxCPU
+	//ComPtr<ID3D12Resource> m_rscIdxCPU
 
 	// gpu 완료 될 때 까지 기다림
 	D3DApp::getInstance()-> WaitForGpu();

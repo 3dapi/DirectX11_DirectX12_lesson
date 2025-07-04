@@ -1,7 +1,7 @@
 
-cbuffer MVP0					: register(b0) { matrix tmMVP; }//					cmdList->SetGraphicsRootDescriptorTable(0, handleMVP);  // b0
-Texture2D			gTex0		: register(t0);					// diffuse0			cmdList->SetGraphicsRootDescriptorTable(1, m_srvHandle); // t0
-SamplerState		gSmpLinear	: register(s0);					// sampler state
+cbuffer         MVP0		: register(b0) { matrix tmMVP; }        //					cmdList->SetGraphicsRootDescriptorTable(0, handleMVP);  // b0
+Texture2D		gTex0		: register(t0);		    		    	// diffuse0			cmdList->SetGraphicsRootDescriptorTable(1, m_srvHandle); // t0
+SamplerState	gSmpLinear	: register(s0);		    		    	// sampler state
 
 //--------------------------------------------------------------------------------------
 struct VS_IN
@@ -30,7 +30,7 @@ PS_IN main_vs( VS_IN v )
 // Pixel Shader
 float4 main_ps( PS_IN v) : SV_Target0
 {
-	float4 t1 = gTex0.Sample(gSmpLinear, v.t);
-	float4 o = t1 * v.d * 1.5F;
-	return o;
+    float4 t1 = gTex0.Sample(gSmpLinear, v.t);
+    float4 o = t1 * v.d;
+    return o;
 }

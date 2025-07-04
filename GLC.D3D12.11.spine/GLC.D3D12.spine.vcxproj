@@ -133,6 +133,7 @@
     <ClCompile Include="G2Util.cpp" />
     <ClCompile Include="GameTimer.cpp" />
     <ClCompile Include="MainApp.cpp" />
+    <ClCompile Include="SceneSpine.cpp" />
     <ClCompile Include="_main.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -141,12 +142,9 @@
     <ClInclude Include="G2Util.h" />
     <ClInclude Include="GameTimer.h" />
     <ClInclude Include="MainApp.h" />
+    <ClInclude Include="SceneSpine.h" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Shaders\simple.hlsl">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </FxCompile>
     <FxCompile Include="Shaders\spine.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
