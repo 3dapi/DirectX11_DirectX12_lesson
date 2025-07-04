@@ -160,6 +160,24 @@ int D3DApp::GetCurrentFrameIndex() const
 	return m_d3dCurrentFrameIndex;
 }
 
+int D3DApp::WaitForGpu()
+{
+	int hr = S_OK;
+
+	hr = m_d3dCommandQueue->Signal(m_fence.Get(), m_fenceValue[m_d3dCurrentFrameIndex]);
+	if (FAILED(hr))
+		return hr;
+	hr = m_fence->SetEventOnCompletion(m_fenceValue[m_d3dCurrentFrameIndex], m_fenceEvent);
+	if (FAILED(hr))
+		return hr;
+
+	WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
+
+	m_fenceValue[m_d3dCurrentFrameIndex]++;
+	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
+	return S_OK;
+}
+
 void D3DApp::Cleanup()
 {
 	ReleaseDevice();
@@ -671,24 +689,6 @@ HRESULT D3DApp::PopulateCommandList()
 	//hr = m_d3dCommandList->Close();
 
 	return hr;
-}
-
-HRESULT D3DApp::WaitForGpu()
-{
-	HRESULT hr = S_OK;
-
-	hr = m_d3dCommandQueue->Signal(m_fence.Get(), m_fenceValue[m_d3dCurrentFrameIndex]);
-	if (FAILED(hr))
-		return hr;
-	hr = m_fence->SetEventOnCompletion(m_fenceValue[m_d3dCurrentFrameIndex], m_fenceEvent);
-	if (FAILED(hr))
-		return hr;
-
-	WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-
-	m_fenceValue[m_d3dCurrentFrameIndex]++;
-	m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
-	return S_OK;
 }
 
 HRESULT D3DApp::MoveToNextFrame()

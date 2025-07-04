@@ -30,6 +30,8 @@ struct Vertex
 };
 
 struct DRAW_BUFFER {
+	UINT						numVb		{};		// vertex count
+	UINT						numIb		{};		// index count
 	ComPtr<ID3D12Resource>		rscPosGPU	{};		// position buffer default heap resource
 	ComPtr<ID3D12Resource>		rscPosCPU	{};		// position buffer upload heap resource
 	D3D12_VERTEX_BUFFER_VIEW	vbvPos		{};		// position buffer view
@@ -66,6 +68,7 @@ protected:
 	UINT							m_maxIdxCount		{};
 
 	vector<DRAW_BUFFER>				m_drawBuf			;
+	int								m_drawCount			{};
 
 	ComPtr<ID3D12Resource>			m_spineTextureRsc	{};		// spine texture resource
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_spineTextureHandle{};		// spine texture handle
@@ -92,6 +95,7 @@ public:
 protected:
 	int		InitSpine(const string& str_atlas, const string& str_skel);
 	int		InitForDevice();
+	int		UpdateDrawBuffer();
 	void*	TextureLoad(const string& fileName);
 	void	TextureUnload(void* texture);
 	void	load(spine::AtlasPage& page, const spine::String& path) override;

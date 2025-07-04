@@ -93,12 +93,12 @@ int SceneSpine::Update(float deltaTime)
 	// Calculate the new pose
 	m_spineSkeleton->updateWorldTransform(spine::Physics_Update);
 
+	// Update spine draw buffer
+	UpdateDrawBuffer();
+
 	return S_OK;
 }
 
-
-// 임시 대응 버전: Draw 루프 내에서 CopyBufferRegion + Barrier로 GPU 접근 보장
-// 임시 대응 버전: Draw 루프 내에서 CopyBufferRegion + Barrier로 GPU 접근 보장
 int SceneSpine::Render()
 {
 	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
@@ -114,7 +114,37 @@ int SceneSpine::Render()
 	cmdList->SetGraphicsRootDescriptorTable(1, m_spineTextureHandle);
 	cmdList->SetPipelineState(m_pipelineState.Get());
 
-	UINT drawIndex = 0;
+	for(int i=0; i<m_drawCount; ++i)
+	{
+		auto& buf = m_drawBuf[i];
+		cmdList->IASetVertexBuffers(0, 1, &buf.vbvPos);
+		cmdList->IASetVertexBuffers(1, 1, &buf.vbvDif);
+		cmdList->IASetVertexBuffers(2, 1, &buf.vbvTex);
+		cmdList->IASetIndexBuffer(&buf.ibv);
+		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		cmdList->DrawIndexedInstanced(buf.ibv.SizeInBytes/sizeof(uint16_t), 1, 0, 0, 0);
+	}
+
+	return S_OK;
+}
+
+int SceneSpine::UpdateDrawBuffer()
+{
+	int hr = S_OK;
+	auto d3d        = IG2GraphicsD3D::getInstance();
+	auto d3dDevice  = std::any_cast<ID3D12Device*               >(d3d->GetDevice());
+	auto cmdAlloc   = std::any_cast<ID3D12CommandAllocator*     >(d3d->GetCommandAllocator());
+	auto cmdList    = std::any_cast<ID3D12GraphicsCommandList*  >(d3d->GetCommandList());
+	auto cmdQue     = std::any_cast<ID3D12CommandQueue*         >(d3d->GetCommandQueue());
+
+	hr = cmdAlloc->Reset();
+	if(FAILED(hr))
+		return hr;
+	hr = cmdList->Reset(cmdAlloc, nullptr);
+	if(FAILED(hr))
+		return hr;
+	
+	m_drawCount = {};
 	const auto& drawOrder = m_spineSkeleton->getDrawOrder();
 	for(size_t i = 0; i < drawOrder.size(); ++i)
 	{
@@ -123,7 +153,7 @@ int SceneSpine::Render()
 		if(!attachment)
 			continue;
 
-		auto& buf = m_drawBuf[drawIndex++];
+		auto& buf = m_drawBuf[m_drawCount++];
 		spine::TextureRegion* texRegion = nullptr;
 		uint32_t rgba = 0xFFFFFFFF;
 		uint16_t* indices = nullptr;
@@ -237,24 +267,24 @@ int SceneSpine::Render()
 		cmdList->ResourceBarrier(1, &barIdx);
 
 		// Bind
+		buf.numVb  = vertexCount;
+		buf.numIb  = indexCount;
 		buf.vbvPos = {buf.rscPosGPU->GetGPUVirtualAddress(), vertexCount * sizeof(XMFLOAT2), sizeof(XMFLOAT2)};
 		buf.vbvDif = {buf.rscDifGPU->GetGPUVirtualAddress(), vertexCount * sizeof(uint32_t), sizeof(uint32_t)};
 		buf.vbvTex = {buf.rscTexGPU->GetGPUVirtualAddress(), vertexCount * sizeof(XMFLOAT2), sizeof(XMFLOAT2)};
 		buf.ibv    = {buf.rscIdxGPU->GetGPUVirtualAddress(), indexCount  * sizeof(uint16_t), DXGI_FORMAT_R16_UINT };
-		cmdList->IASetVertexBuffers(0, 1, &buf.vbvPos);
-		cmdList->IASetVertexBuffers(1, 1, &buf.vbvDif);
-		cmdList->IASetVertexBuffers(2, 1, &buf.vbvTex);
-		cmdList->IASetIndexBuffer(&buf.ibv);
-		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		cmdList->DrawIndexedInstanced(indexCount, 1, 0, 0, 0);
 
 		delete[] worldPos;
 	}
 
+	hr = cmdList->Close();
+	if(FAILED(hr))
+		return hr;
+	ID3D12CommandList* ppCmdLists[] = {cmdList};
+	cmdQue->ExecuteCommandLists(_countof(ppCmdLists), ppCmdLists);
+	d3d->WaitForGpu();
 	return S_OK;
 }
-
-
 
 int SceneSpine::InitSpine(const string& str_atlas, const string& str_skel)
 {
@@ -308,13 +338,13 @@ int SceneSpine::InitSpine(const string& str_atlas, const string& str_skel)
 	// buffer 최댓값으로 설정.
 	m_maxVtxCount = UINT( (maxVertexCount>8) ? maxVertexCount : 8 );
 	m_maxIdxCount = UINT( (maxIndexCount>8) ? maxIndexCount : 8 );
-	m_drawBuf.resize(drawOrder.size()*2, {});
+	m_drawBuf.resize(size_t(3+ drawOrder.size() * 1.2), {});
 
 	AnimationStateData animationStateData(m_spineSkeletonData);
 	animationStateData.setDefaultMix(0.2f);
 	m_spineAniState = new AnimationState(&animationStateData);
-	//m_spineAniState->setAnimation(0, "gun-holster", false);
-	//m_spineAniState->addAnimation(0, "roar", false, 0.8F);
+	m_spineAniState->setAnimation(0, "gun-holster", false);
+	m_spineAniState->addAnimation(0, "roar", false, 0.8F);
 	m_spineAniState->addAnimation(0, "walk", true, 0);
 
 	m_spineSkeleton->setPosition(0.0F, -300.0F);

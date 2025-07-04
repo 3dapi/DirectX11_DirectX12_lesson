@@ -40,6 +40,7 @@ struct IG2GraphicsD3D
 	virtual std::any GetRenderTargetView()		= 0;
 	virtual std::any GetDepthStencilView()		= 0;
 	virtual int GetCurrentFrameIndex() const	= 0;
+	virtual int WaitForGpu()					= 0;
 	virtual ~IG2GraphicsD3D() = default;
 };
 

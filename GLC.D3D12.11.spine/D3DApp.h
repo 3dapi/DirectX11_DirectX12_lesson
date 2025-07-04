@@ -39,6 +39,7 @@ public:
 	std::any	GetRenderTargetView()			override;
 	std::any	GetDepthStencilView()			override;
 	int			GetCurrentFrameIndex() const	override;
+	int			WaitForGpu()					override;
 
 	static D3DApp*	getInstance();								// sigleton
 	void			Cleanup();
@@ -102,7 +103,6 @@ public:
 	HWND GetHwnd() const	{ return m_hWnd; }
 	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView()   const;
 	D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView() const;
-	HRESULT	WaitForGpu();
 
 	virtual int Init()		;
 	virtual int Destroy()	;
