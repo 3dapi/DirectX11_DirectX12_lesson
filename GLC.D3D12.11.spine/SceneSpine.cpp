@@ -1,4 +1,9 @@
-﻿#include <any>
+﻿// for avx2 memcpy
+#include <immintrin.h>
+#include <cstdint>
+#include <cstring>
+
+#include <any>
 #include <filesystem>
 #include <memory>
 #include <Windows.h>
@@ -153,128 +158,166 @@ int SceneSpine::UpdateDrawBuffer()
 		if(!attachment)
 			continue;
 
-		auto& buf = m_drawBuf[m_drawCount++];
-		spine::TextureRegion* texRegion = nullptr;
-		uint32_t rgba = 0xFFFFFFFF;
-		uint16_t* indices = nullptr;
-		UINT indexCount = 0;
-		UINT vertexCount = 0;
-		float* worldPos = nullptr;
-		float* uvs = nullptr;
+		DRAW_BUFFER*		buf  = {};
+		MeshAttachment*		meshAttachment   = {};
+		RegionAttachment*	regionAttachment = {};
 
-		if(attachment->getRTTI().isExactly(spine::MeshAttachment::rtti)) {
+		auto isMesh = attachment->getRTTI().isExactly(spine::MeshAttachment::rtti);
+		auto isResion = attachment->getRTTI().isExactly(spine::RegionAttachment::rtti);
+		if (!(isMesh || isResion))
+			continue;
+
+		if (isMesh)
+		{
 			auto* mesh = static_cast<spine::MeshAttachment*>(attachment);
-			texRegion = mesh->getRegion();
-			if(!texRegion)
+			auto* texRegion = mesh->getRegion();
+			if (!texRegion)
 				continue;
-
-			vertexCount = (UINT)mesh->getWorldVerticesLength() / 2;
-			indexCount = (UINT)mesh->getTriangles().size();
-			indices = mesh->getTriangles().buffer();
-
-			worldPos = new float[mesh->getWorldVerticesLength()];
-			mesh->computeWorldVertices(*slot, 0, mesh->getWorldVerticesLength(), worldPos, 0, 2);
-			uvs = const_cast<float*>(mesh->getUVs().buffer());
-
-			auto c = slot->getColor();
-			auto mColor = mesh->getColor();
-			rgba = ((uint32_t)(c.a * mColor.a * 255) << 24) |
-				((uint32_t)(c.r * mColor.r * 255) << 16) |
-				((uint32_t)(c.g * mColor.g * 255) << 8) |
-				((uint32_t)(c.b * mColor.b * 255) << 0);
+			meshAttachment = mesh;
 		}
-		else if(attachment->getRTTI().isExactly(spine::RegionAttachment::rtti))
+		else if (isResion)
 		{
 			auto* region = static_cast<spine::RegionAttachment*>(attachment);
-			texRegion = region->getRegion();
-			if(!texRegion) continue;
+			auto* texRegion = region->getRegion();
+			if (!texRegion)
+				continue;
+			regionAttachment = region;
+		}
 
-			vertexCount = 4;
-			indexCount = 6;
-			static const uint16_t quadIndices[] = {0, 1, 2, 2, 3, 0};
-			indices = const_cast<uint16_t*>(quadIndices);
+		buf = &m_drawBuf[m_drawCount++];
 
-			worldPos = new float[8];
-			region->computeWorldVertices(*slot, worldPos, 0, 2);
-			uvs = const_cast<float*>(region->getUVs().buffer());
+		uint32_t    rgba        = 0xFFFFFFFF;
+		UINT        idxCount    = {};
+		UINT        vtxCount    = {};
+		UINT        posSize     = {};
+		UINT        difSize     = {};
+		UINT        texSize     = {};
+		UINT        idxSize     = {};
+
+		if(isMesh)
+		{
+			float*    spineTex = const_cast<float*>(meshAttachment->getUVs().buffer());
+			uint16_t* spineIdx = meshAttachment->getTriangles().buffer();
+			
+			vtxCount    = (UINT)meshAttachment->getWorldVerticesLength() / 2;
+			idxCount    = (UINT)meshAttachment->getTriangles().size();
+
+			spine::Color c = slot->getColor();
+			spine::Color m = meshAttachment->getColor();
+			rgba =
+				((uint32_t)(c.a * m.a * 255) << 24) |
+				((uint32_t)(c.r * m.r * 255) << 16) |
+				((uint32_t)(c.g * m.g * 255) << 8) |
+				((uint32_t)(c.b * m.b * 255) << 0);
+
+			posSize = sizeof(XMFLOAT2) * vtxCount;
+			difSize = sizeof(uint32_t) * vtxCount;
+			texSize = sizeof(XMFLOAT2) * vtxCount;
+			idxSize = sizeof(uint16_t) * idxCount;
+
+			// Upload → GPU 복사 (Position)
+			{
+				XMFLOAT2* ptrPos = nullptr;
+				buf->rscPosCPU->Map(0, nullptr, (void**)&ptrPos);
+				meshAttachment->computeWorldVertices(*slot, 0, meshAttachment->getWorldVerticesLength(), (float*)ptrPos, 0, 2);
+				buf->rscPosCPU->Unmap(0, nullptr);
+			}
+			// Upload → GPU 복사 (texture coord)
+			{
+				XMFLOAT2* ptrTex = nullptr;
+				buf->rscTexCPU->Map(0, nullptr, (void**)&ptrTex);
+				avx2_memcpy(ptrTex, spineTex, texSize);
+				buf->rscTexCPU->Unmap(0, nullptr);
+			}
+			// Upload → GPU 복사 (diffuse)
+			{
+				uint32_t* ptrDif = nullptr;
+				buf->rscDifCPU->Map(0, nullptr, (void**)&ptrDif);
+				avx2_memset32(ptrDif, rgba, vtxCount);
+				buf->rscDifCPU->Unmap(0, nullptr);
+			}
+			// Index
+			{
+				uint16_t* ptrIdx = nullptr;
+				buf->rscIdxCPU->Map(0, nullptr, (void**)&ptrIdx);
+				avx2_memcpy(ptrIdx, spineIdx, idxSize);
+				buf->rscIdxCPU->Unmap(0, nullptr);
+			}
+		}
+		else if (isResion)
+		{
+			static const uint16_t spineIdx[] = { 0, 1, 2, 2, 3, 0 };
+			float* spineTex = const_cast<float*>(regionAttachment->getUVs().buffer());
+
+			vtxCount    = 4;
+			idxCount    = 6;
 
 			auto c = slot->getColor();
-			auto rColor = region->getColor();
-			rgba = ((uint32_t)(c.a * rColor.a * 255) << 24) |
-				((uint32_t)(c.r * rColor.r * 255) << 16) |
-				((uint32_t)(c.g * rColor.g * 255) << 8) |
-				((uint32_t)(c.b * rColor.b * 255) << 0);
-		}
-		else
-			continue;
+			auto r = regionAttachment->getColor();
+			rgba =
+				((uint32_t)(c.a * r.a * 255) << 24) |
+				((uint32_t)(c.r * r.r * 255) << 16) |
+				((uint32_t)(c.g * r.g * 255) << 8) |
+				((uint32_t)(c.b * r.b * 255) << 0);
 
-		auto* atlasRegion = reinterpret_cast<spine::AtlasRegion*>(texRegion);
-		auto* texture = reinterpret_cast<ID3D12Resource*>(atlasRegion->page->texture);
-		if(texture != m_spineTextureRsc.Get()) {
-			delete[] worldPos;
-			continue;
+			posSize = sizeof(XMFLOAT2) * vtxCount;
+			difSize = sizeof(uint32_t) * vtxCount;
+			texSize = sizeof(XMFLOAT2) * vtxCount;
+			idxSize = sizeof(uint16_t) * idxCount;
+
+			// Position
+			{
+				XMFLOAT2* ptrPos = nullptr;
+				buf->rscPosCPU->Map(0, nullptr, (void**)&ptrPos);
+				regionAttachment->computeWorldVertices(*slot, (float*)ptrPos, 0, 2);
+				buf->rscPosCPU->Unmap(0, nullptr);
+			}
+			// texture coord
+			{
+				XMFLOAT2* ptrTex = nullptr;
+				buf->rscTexCPU->Map(0, nullptr, (void**)&ptrTex);
+				avx2_memcpy(ptrTex, spineTex, texSize);
+				buf->rscTexCPU->Unmap(0, nullptr);
+			}
+			// diffuse
+			{
+				uint32_t* ptrDif = nullptr;
+				buf->rscDifCPU->Map(0, nullptr, (void**)&ptrDif);
+				avx2_memset32(ptrDif, rgba, vtxCount);
+				buf->rscDifCPU->Unmap(0, nullptr);
+			}
+			// Index
+			{
+				uint16_t* ptrIdx = nullptr;
+				buf->rscIdxCPU->Map(0, nullptr, (void**)&ptrIdx);
+				avx2_memcpy(ptrIdx, spineIdx, idxSize);
+				buf->rscIdxCPU->Unmap(0, nullptr);
+			}
 		}
 
-		// Upload → GPU 복사 (Position)
-		UINT posSize = sizeof(XMFLOAT2) * vertexCount;
-		{
-			XMFLOAT2* ptr = nullptr;
-			buf.rscPosCPU->Map(0, nullptr, (void**)&ptr);
-				memset(ptr, m_maxVtxCount * sizeof(XMFLOAT2), 0);
-				memcpy(ptr, worldPos, posSize);
-			buf.rscPosCPU->Unmap(0, nullptr);
-		}
-
-		cmdList->CopyBufferRegion(buf.rscPosGPU.Get(), 0, buf.rscPosCPU.Get(), 0, posSize);
-		CD3DX12_RESOURCE_BARRIER barPos = CD3DX12_RESOURCE_BARRIER::Transition(buf.rscPosGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+		cmdList->CopyBufferRegion(buf->rscPosGPU.Get(), 0, buf->rscPosCPU.Get(), 0, posSize);
+		CD3DX12_RESOURCE_BARRIER barPos = CD3DX12_RESOURCE_BARRIER::Transition(buf->rscPosGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 		cmdList->ResourceBarrier(1, &barPos);
 
-		// Color
-		UINT colSize = sizeof(uint32_t) * vertexCount;
-		{
-			uint32_t* ptr = nullptr;
-			buf.rscDifCPU->Map(0, nullptr, (void**)&ptr);
-			for(UINT i = 0; i < vertexCount; ++i)
-				ptr[i] = rgba;
-			buf.rscDifCPU->Unmap(0, nullptr);
-		}
-		cmdList->CopyBufferRegion(buf.rscDifGPU.Get(), 0, buf.rscDifCPU.Get(), 0, colSize);
-		CD3DX12_RESOURCE_BARRIER barCol = CD3DX12_RESOURCE_BARRIER::Transition(buf.rscDifGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		cmdList->ResourceBarrier(1, &barCol);
+		cmdList->CopyBufferRegion(buf->rscDifGPU.Get(), 0, buf->rscDifCPU.Get(), 0, difSize);
+		CD3DX12_RESOURCE_BARRIER barDif = CD3DX12_RESOURCE_BARRIER::Transition(buf->rscDifGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+		cmdList->ResourceBarrier(1, &barDif);
 
-		// UV
-		UINT uvSize = sizeof(XMFLOAT2) * vertexCount;
-		{
-			XMFLOAT2* ptr = nullptr;
-			buf.rscTexCPU->Map(0, nullptr, (void**)&ptr);
-			memcpy(ptr, uvs, uvSize);
-			buf.rscTexCPU->Unmap(0, nullptr);
-		}
-		cmdList->CopyBufferRegion(buf.rscTexGPU.Get(), 0, buf.rscTexCPU.Get(), 0, uvSize);
-		CD3DX12_RESOURCE_BARRIER barUV = CD3DX12_RESOURCE_BARRIER::Transition(buf.rscTexGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		cmdList->ResourceBarrier(1, &barUV);
+		cmdList->CopyBufferRegion(buf->rscTexGPU.Get(), 0, buf->rscTexCPU.Get(), 0, texSize);
+		CD3DX12_RESOURCE_BARRIER barTex = CD3DX12_RESOURCE_BARRIER::Transition(buf->rscTexGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+		cmdList->ResourceBarrier(1, &barTex);
 
-		// Index
-		UINT idxSize = sizeof(uint16_t) * indexCount;
-		{
-			uint16_t* ptr = nullptr;
-			buf.rscIdxCPU->Map(0, nullptr, (void**)&ptr);
-			memcpy(ptr, indices, idxSize);
-			buf.rscIdxCPU->Unmap(0, nullptr);
-		}
-		cmdList->CopyBufferRegion(buf.rscIdxGPU.Get(), 0, buf.rscIdxCPU.Get(), 0, idxSize);
-		CD3DX12_RESOURCE_BARRIER barIdx = CD3DX12_RESOURCE_BARRIER::Transition(buf.rscIdxGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+		cmdList->CopyBufferRegion(buf->rscIdxGPU.Get(), 0, buf->rscIdxCPU.Get(), 0, idxSize);
+		CD3DX12_RESOURCE_BARRIER barIdx = CD3DX12_RESOURCE_BARRIER::Transition(buf->rscIdxGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 		cmdList->ResourceBarrier(1, &barIdx);
 
 		// Bind
-		buf.numVb  = vertexCount;
-		buf.numIb  = indexCount;
-		buf.vbvPos = {buf.rscPosGPU->GetGPUVirtualAddress(), vertexCount * sizeof(XMFLOAT2), sizeof(XMFLOAT2)};
-		buf.vbvDif = {buf.rscDifGPU->GetGPUVirtualAddress(), vertexCount * sizeof(uint32_t), sizeof(uint32_t)};
-		buf.vbvTex = {buf.rscTexGPU->GetGPUVirtualAddress(), vertexCount * sizeof(XMFLOAT2), sizeof(XMFLOAT2)};
-		buf.ibv    = {buf.rscIdxGPU->GetGPUVirtualAddress(), indexCount  * sizeof(uint16_t), DXGI_FORMAT_R16_UINT };
-
-		delete[] worldPos;
+		buf->numVb  = vtxCount;
+		buf->numIb  = idxCount;
+		buf->vbvPos = {buf->rscPosGPU->GetGPUVirtualAddress(), posSize, sizeof(XMFLOAT2)};
+		buf->vbvDif = {buf->rscDifGPU->GetGPUVirtualAddress(), difSize, sizeof(uint32_t)};
+		buf->vbvTex = {buf->rscTexGPU->GetGPUVirtualAddress(), texSize, sizeof(XMFLOAT2)};
+		buf->ibv    = {buf->rscIdxGPU->GetGPUVirtualAddress(), idxSize, DXGI_FORMAT_R16_UINT };
 	}
 
 	hr = cmdList->Close();
@@ -330,9 +373,9 @@ int SceneSpine::InitSpine(const string& str_atlas, const string& str_skel)
 			if(vtxCount > maxVertexCount)
 				maxVertexCount = vtxCount;
 
-			size_t indexCount = mesh->getTriangles().size();
-			if(indexCount > maxIndexCount)
-				maxIndexCount = indexCount;
+			size_t idxCount = mesh->getTriangles().size();
+			if(idxCount > maxIndexCount)
+				maxIndexCount = idxCount;
 		}
 	}
 	// buffer 최댓값으로 설정.
@@ -572,7 +615,7 @@ void* SceneSpine::TextureLoad(const string& fileName)
 	DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
 	{
 		resourceUpload.Begin();
-		auto wFile = ansiToWstring(fileName);
+		auto wFile = ansiToWstr(fileName);
 		int hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, wFile.c_str(), m_spineTextureRsc.GetAddressOf());
 		if(FAILED(hr))
 			return {};
