@@ -86,12 +86,12 @@ int MainApp::Update()
 		auto currentFrameIndex = *(std::any_cast<UINT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
 		{
 			uint8_t* dest = m_ptrViw + (currentFrameIndex * ALIGNED_MATRIX_SIZE);
-			printf("m_ptrViw: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
+			//printf("m_ptrViw: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
 			memcpy(dest, &m_tmViw, sizeof(m_tmViw));
 		}
 		{
 			uint8_t* dest = m_ptrPrj + (currentFrameIndex * ALIGNED_MATRIX_SIZE);
-			printf("m_ptrPrj: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
+			//printf("m_ptrPrj: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
 			memcpy(dest, &m_tmPrj, sizeof(m_tmPrj));
 		}
 	}
@@ -129,16 +129,16 @@ int MainApp::Render()
 
 	// draw
 	auto cbv_begin = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
-	for (int i = 0; i < 5; ++i)
+	for (int i = 0; i < m_numObject; ++i)
 	{
 		UINT bufferIndex = currentFrameIndex * m_numObject + i;
 		uint8_t* dest = m_ptrWld + bufferIndex * alignedSize;
 
-		printf("m_ptrWld: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
+		//printf("m_ptrWld: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
 
 		memcpy(dest, &m_tmWld[i], sizeof(XMMATRIX));
 
-		printf("Update Frame %u - Object %d   bufferIndex: %u \n", currentFrameIndex, i, bufferIndex);
+		//printf("Update Frame %u - Object %d   bufferIndex: %u \n", currentFrameIndex, i, bufferIndex);
 
 		// 3. CBV 핸들 계산 및 바인딩 (root parameter index 0 = b0)
 		CD3DX12_GPU_DESCRIPTOR_HANDLE handleWld(cbvWldStart, bufferIndex, descriptorSize);
@@ -360,7 +360,7 @@ int MainApp::InitResource()
 		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_cnstTmWld->GetGPUVirtualAddress();
 		for (UINT n = 0; n < b0_count; ++n)
 		{
-			printf("m_cnstTmWld: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
+			//printf("m_cnstTmWld: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 			desc.BufferLocation = gpuAddress;
 			desc.SizeInBytes = alignedSize;
@@ -378,7 +378,7 @@ int MainApp::InitResource()
 
 		for (UINT n = 0; n < b1_count; ++n)
 		{
-			printf("m_cnstTmViw: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
+			//printf("m_cnstTmViw: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 			desc.BufferLocation = gpuAddress;
 			desc.SizeInBytes = alignedSize;
@@ -396,7 +396,7 @@ int MainApp::InitResource()
 
 		for (UINT n = 0; n < b2_count; ++n)
 		{
-			printf("m_cnstTmPrj: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
+			//printf("m_cnstTmPrj: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 			desc.BufferLocation = gpuAddress;
 			desc.SizeInBytes = alignedSize;
@@ -438,7 +438,8 @@ int MainApp::InitResource()
 	// 5 텍스처 레지스터 SRV 디스크립터 생성 
 	// 3개 상수 레지스터 다음부터 텍스처 레지스터(셰이더 참고)
 	//FRAME_BUFFER_COUNT * 3
-	UINT baseSRVIndex = FRAME_BUFFER_COUNT * m_numRegisterConst;
+	UINT baseSRVIndex = FRAME_BUFFER_COUNT * (m_numObject + m_numRegisterConst - 1);
+
 	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
 	CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
