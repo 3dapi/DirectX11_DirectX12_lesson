@@ -20,6 +20,8 @@
 #include "GameTimer.h"
 GameTimer	m_timer;
 
+const static int ALIGNED_MATRIX_SIZE = G2::align256BufferSize(sizeof(XMMATRIX));
+
 MainApp::MainApp()
 {
 }
@@ -74,19 +76,22 @@ int MainApp::Update()
 	if(true)
 	{
 		m_angle += deltaTime ;
-		m_tmWld = XMMatrixRotationY((float)m_angle);
+		auto tmWld = XMMatrixRotationY((float)m_angle);
+		m_tmWld[0] = tmWld;
+		m_tmWld[1] = XMMatrixScaling(0.5F, 0.5F, 0.5F) * XMMatrixRotationY(FLOAT(m_angle)*2.0F) * XMMatrixTranslation(-400,    0, 0);
+		m_tmWld[2] = XMMatrixScaling(0.7F, 0.7F, 0.7F) * XMMatrixRotationY(FLOAT(m_angle)*0.5F) * XMMatrixTranslation( 400,    0, 0);
+		m_tmWld[3] = XMMatrixScaling(0.4F, 0.4F, 0.4F) * XMMatrixRotationY(FLOAT(m_angle)*3.0F) * XMMatrixTranslation(   0, -450, 0);
+		m_tmWld[4] = XMMatrixScaling(0.3F, 0.3F, 0.3F) * XMMatrixRotationY(FLOAT(m_angle)*0.3F) * XMMatrixTranslation(   0,  350, 0);
 
 		auto currentFrameIndex = *(std::any_cast<UINT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
 		{
-			uint8_t* dest = m_ptrWld + (currentFrameIndex * G2::align256BufferSize(sizeof(XMMATRIX)));
-			memcpy(dest, &m_tmWld, sizeof(m_tmWld));
-		}
-		{
-			uint8_t* dest = m_ptrViw + (currentFrameIndex * G2::align256BufferSize(sizeof(XMMATRIX)));
+			uint8_t* dest = m_ptrViw + (currentFrameIndex * ALIGNED_MATRIX_SIZE);
+			printf("m_ptrViw: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
 			memcpy(dest, &m_tmViw, sizeof(m_tmViw));
 		}
 		{
-			uint8_t* dest = m_ptrPrj + (currentFrameIndex * G2::align256BufferSize(sizeof(XMMATRIX)));
+			uint8_t* dest = m_ptrPrj + (currentFrameIndex * ALIGNED_MATRIX_SIZE);
+			printf("m_ptrPrj: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
 			memcpy(dest, &m_tmPrj, sizeof(m_tmPrj));
 		}
 	}
@@ -96,43 +101,66 @@ int MainApp::Update()
 int MainApp::Render()
 {
 	HRESULT hr = S_OK;
-	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
-	auto cmdList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+	auto d3dDevice         = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto cmdList           = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 	UINT currentFrameIndex = *(std::any_cast<UINT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
-	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	UINT descriptorSize    = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	UINT alignedSize       = ALIGNED_MATRIX_SIZE;
 
 	// 1. 루트 시그너처
 	cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 
 	// 2. 디스크립터 힙 설정
-	ID3D12DescriptorHeap* descriptorHeaps[] = {m_cbvHeap.Get()};
+	ID3D12DescriptorHeap* descriptorHeaps[] = { m_cbvHeap.Get() };
 	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	// 3. CBV 핸들 계산 및 바인딩 (root parameter index 0 = b0)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE handleWld(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 0 * FRAME_BUFFER_COUNT + currentFrameIndex, descriptorSize);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE handleViw(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 1 * FRAME_BUFFER_COUNT + currentFrameIndex, descriptorSize);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE handlePrj(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 2 * FRAME_BUFFER_COUNT + currentFrameIndex, descriptorSize);
+	UINT b0_count = FRAME_BUFFER_COUNT * m_numObject;
+	UINT b1_count = FRAME_BUFFER_COUNT * 1;
+	UINT b2_count = FRAME_BUFFER_COUNT * 1;
 
-	cmdList->SetGraphicsRootDescriptorTable(0, handleWld);
-	cmdList->SetGraphicsRootDescriptorTable(1, handleViw);
-	cmdList->SetGraphicsRootDescriptorTable(2, handlePrj);
+	UINT b0_offset = 0;
+	UINT b1_offset = b0_offset + b0_count;
+	UINT b2_offset = b1_offset + b1_count;
 
-	// 4. SRV 핸들 바인딩 (root parameter index 상수 레지스터 다음 3 = t0, 4= t1)
-	cmdList->SetGraphicsRootDescriptorTable(3, m_srvHandleChecker);
-	cmdList->SetGraphicsRootDescriptorTable(4, m_srvHandleXlogo);
-
-	// 5. 파이프라인 연결
-	cmdList->SetPipelineState(m_pipelineState.Get());
-
-
-	// 토폴로지
-	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	// 버택스, 인덱스 버퍼
-	cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
-	cmdList->IASetIndexBuffer(&m_viewIdx);
+	auto cbv_base = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
+	auto cbvWldStart = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, b0_offset, descriptorSize);
+	auto cbvViwStart = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, b1_offset, descriptorSize);
+	auto cbvPrjStart = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, b2_offset, descriptorSize);
 
 	// draw
-	cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
+	auto cbv_begin = m_cbvHeap->GetGPUDescriptorHandleForHeapStart();
+	for (int i = 0; i < 5; ++i)
+	{
+		UINT bufferIndex = currentFrameIndex * m_numObject + i;
+		uint8_t* dest = m_ptrWld + bufferIndex * alignedSize;
+
+		printf("m_ptrWld: Update Frame %u - -> 0x%p\n", currentFrameIndex, dest);
+
+		memcpy(dest, &m_tmWld[i], sizeof(XMMATRIX));
+
+		printf("Update Frame %u - Object %d   bufferIndex: %u \n", currentFrameIndex, i, bufferIndex);
+
+		// 3. CBV 핸들 계산 및 바인딩 (root parameter index 0 = b0)
+		CD3DX12_GPU_DESCRIPTOR_HANDLE handleWld(cbvWldStart, bufferIndex, descriptorSize);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE handleViw(cbvViwStart, currentFrameIndex, descriptorSize);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE handlePrj(cbvPrjStart, currentFrameIndex, descriptorSize);
+
+		cmdList->SetGraphicsRootDescriptorTable(0, handleWld); // b0 = world matrix
+		cmdList->SetGraphicsRootDescriptorTable(1, handleViw);
+		cmdList->SetGraphicsRootDescriptorTable(2, handlePrj);
+
+		// 4. SRV 핸들 바인딩 (root parameter index 상수 레지스터 다음 3 = t0, 4= t1)
+		cmdList->SetGraphicsRootDescriptorTable(3, m_srvHandleChecker);
+		cmdList->SetGraphicsRootDescriptorTable(4, m_srvHandleXlogo);
+		// 5. 파이프라인 연결
+		cmdList->SetPipelineState(m_pipelineState.Get());
+		// 토폴로지
+		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		// 버택스, 인덱스 버퍼
+		cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
+		cmdList->IASetIndexBuffer(&m_viewIdx);
+		cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
+	}
 
 	return S_OK;
 }
@@ -246,7 +274,11 @@ int MainApp::InitResource()
 	// Create a descriptor heap for the constant buffers.
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = FRAME_BUFFER_COUNT * 3  + 2;	// 프레임당 상수 버퍼 3개 (b0~b2) * 프레임 수 + 텍스처용 SRV(t0,t0) 2개
+		heapDesc.NumDescriptors =
+							  FRAME_BUFFER_COUNT * m_numObject				// per-object b0
+							+ FRAME_BUFFER_COUNT * (m_numRegisterConst - 1) // shared b1, b2
+							+ m_numRegisterTex;								// SRV for textures
+
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
@@ -259,7 +291,8 @@ int MainApp::InitResource()
 	// 상수 버퍼용 리소스 생성
 	{
 		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX ));
+		UINT width = FRAME_BUFFER_COUNT * m_numObject * ALIGNED_MATRIX_SIZE;
+		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width);
 		hr = d3dDevice->CreateCommittedResource(&heapProperties
 												, D3D12_HEAP_FLAG_NONE
 												, &constantBufferDesc
@@ -267,10 +300,15 @@ int MainApp::InitResource()
 												, nullptr, IID_PPV_ARGS(&m_cnstTmWld));
 		if(FAILED(hr))
 			return hr;
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrWld));
+		if (FAILED(hr))
+			return hr;
 	}
 	{
 		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX ));
+		UINT width = FRAME_BUFFER_COUNT * 1 * ALIGNED_MATRIX_SIZE;
+		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width);
 		hr = d3dDevice->CreateCommittedResource(&heapProperties
 												, D3D12_HEAP_FLAG_NONE
 												, &constantBufferDesc
@@ -278,10 +316,15 @@ int MainApp::InitResource()
 												, nullptr, IID_PPV_ARGS(&m_cnstTmViw));
 		if(FAILED(hr))
 			return hr;
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_cnstTmViw->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrViw));
+		if (FAILED(hr))
+			return hr;
 	}
 	{
 		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * G2::align256BufferSize(sizeof XMMATRIX));
+		UINT width = FRAME_BUFFER_COUNT * 1 * ALIGNED_MATRIX_SIZE;
+		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width);
 		hr = d3dDevice->CreateCommittedResource(&heapProperties
 												, D3D12_HEAP_FLAG_NONE
 												, &constantBufferDesc
@@ -289,66 +332,80 @@ int MainApp::InitResource()
 												, nullptr, IID_PPV_ARGS(&m_cnstTmPrj));
 		if(FAILED(hr))
 			return hr;
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_cnstTmPrj->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrPrj));
+		if (FAILED(hr))
+			return hr;
 	}
 
 	UINT d3dDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	const UINT bufferSize = G2::align256BufferSize(sizeof XMMATRIX);
-	// b0: Wld
+
+	UINT b0_count = FRAME_BUFFER_COUNT * m_numObject;
+	UINT b1_count = FRAME_BUFFER_COUNT;
+	UINT b2_count = FRAME_BUFFER_COUNT;
+
+	UINT b0_offset = 0;
+	UINT b1_offset = b0_offset + b0_count;
+	UINT b2_offset = b1_offset + b1_count;
+
+	const UINT alignedSize = ALIGNED_MATRIX_SIZE;
+
+	// -----------------------------------------------------------------------------
+	// b0: World Matrix (per-object, per-frame)
+	D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
+	size_t debug_begin_0 = cpuHandle.ptr;
+	size_t debug_begin_1 = cpuHandle.ptr;
+	size_t debug_begin_2 = cpuHandle.ptr;
 	{
-		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmWld->GetGPUVirtualAddress();
-		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
-		// offset 0
-		for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
+		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_cnstTmWld->GetGPUVirtualAddress();
+		for (UINT n = 0; n < b0_count; ++n)
 		{
+			printf("m_cnstTmWld: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-			desc.BufferLocation = cbvGpuAddress;
-			desc.SizeInBytes = bufferSize;
-			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-			cbvGpuAddress += bufferSize;
-			cbvCpuHandle.ptr += d3dDescriptorSize;
+			desc.BufferLocation = gpuAddress;
+			desc.SizeInBytes = alignedSize;
+			d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
+			gpuAddress += desc.SizeInBytes;
+			cpuHandle.ptr += d3dDescriptorSize;
 		}
-		CD3DX12_RANGE readRange(0, 0);
-		hr = m_cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrWld));
-		if(FAILED(hr)) return hr;
+	}
+	// -----------------------------------------------------------------------------
+	// b1: View Matrix (per-frame)
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_cnstTmViw->GetGPUVirtualAddress();
+	//	cpuHandle.ptr += b1_offset * d3dDescriptorSize;
+		debug_begin_1 = debug_begin_1 + b1_offset * d3dDescriptorSize;
+
+		for (UINT n = 0; n < b1_count; ++n)
+		{
+			printf("m_cnstTmViw: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
+			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+			desc.BufferLocation = gpuAddress;
+			desc.SizeInBytes = alignedSize;
+			d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
+			gpuAddress += desc.SizeInBytes;
+			cpuHandle.ptr += d3dDescriptorSize;
+		}
+	}
+	// -----------------------------------------------------------------------------
+	// b2: Projection Matrix (per-frame)
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_cnstTmPrj->GetGPUVirtualAddress();
+		//cpuHandle.ptr += b2_offset * d3dDescriptorSize;
+		debug_begin_2 = debug_begin_2 + b2_offset * d3dDescriptorSize;
+
+		for (UINT n = 0; n < b2_count; ++n)
+		{
+			printf("m_cnstTmPrj: CBV[%d] GPUAddress = 0x%llx\n", n, gpuAddress);
+			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+			desc.BufferLocation = gpuAddress;
+			desc.SizeInBytes = alignedSize;
+			d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
+			gpuAddress += desc.SizeInBytes;
+			cpuHandle.ptr += d3dDescriptorSize;
+		}
 	}
 
-	// b1: Viw
-	{
-		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmViw->GetGPUVirtualAddress();
-		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
-		cbvCpuHandle.ptr += d3dDescriptorSize * FRAME_BUFFER_COUNT; // offset to b1 region
-		for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
-		{
-			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-			desc.BufferLocation = cbvGpuAddress;
-			desc.SizeInBytes = bufferSize;
-			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-			cbvGpuAddress += bufferSize;
-			cbvCpuHandle.ptr += d3dDescriptorSize;
-		}
-		CD3DX12_RANGE readRange(0, 0);
-		hr = m_cnstTmViw->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrViw));
-		if(FAILED(hr)) return hr;
-	}
-
-	// b2: Prj
-	{
-		D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstTmPrj->GetGPUVirtualAddress();
-		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
-		cbvCpuHandle.ptr += d3dDescriptorSize * FRAME_BUFFER_COUNT * 2; // offset to b2 region
-		for(int n = 0; n < FRAME_BUFFER_COUNT; n++)
-		{
-			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-			desc.BufferLocation = cbvGpuAddress;
-			desc.SizeInBytes = bufferSize;
-			d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-			cbvGpuAddress += bufferSize;
-			cbvCpuHandle.ptr += d3dDescriptorSize;
-		}
-		CD3DX12_RANGE readRange(0, 0);
-		hr = m_cnstTmPrj->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrPrj));
-		if(FAILED(hr)) return hr;
-	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 4. 텍스처 생성 및 업로드 (CreateWICTextureFromFile + ResourceUploadBatch)
@@ -381,7 +438,7 @@ int MainApp::InitResource()
 	// 5 텍스처 레지스터 SRV 디스크립터 생성 
 	// 3개 상수 레지스터 다음부터 텍스처 레지스터(셰이더 참고)
 	//FRAME_BUFFER_COUNT * 3
-	UINT baseSRVIndex = FRAME_BUFFER_COUNT * 3;
+	UINT baseSRVIndex = FRAME_BUFFER_COUNT * m_numRegisterConst;
 	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
 	CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
@@ -530,10 +587,9 @@ int MainApp::InitConstValue()
 
 	m_tmPrj = XMMatrixPerspectiveFovLH(XM_PIDIV4 * 1.2F, aspectRatio, 1.0f, 5000.0f);
 
-	static const XMVECTORF32 eye = {0.0f, 10.0f, -700.0f, 0.0f};
-	static const XMVECTORF32 at = {0.0f, 0.0f, 0.0f, 0.0f};
-	static const XMVECTORF32 up = {0.0f, 1.0f, 0.0f, 0.0f};
+	static const XMVECTORF32 eye = {0.0f, 0.0f, -2000.0f, 0.0f};
+	static const XMVECTORF32 at  = {0.0f, 0.0f, 0.0f, 0.0f};
+	static const XMVECTORF32 up  = {0.0f, 1.0f, 0.0f, 0.0f};
 	m_tmViw = XMMatrixLookAtLH(eye, at, up);
-	m_tmWld = XMMatrixRotationY(0);
 	return S_OK;
 }

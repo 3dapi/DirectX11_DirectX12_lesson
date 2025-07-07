@@ -42,7 +42,7 @@ protected:
 	ComPtr<ID3D12Resource>			m_rscVtx			{};
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
 
-	XMMATRIX						m_tmWld				= XMMatrixIdentity();
+	XMMATRIX						m_tmWld[5]			{};
 	ComPtr<ID3D12Resource>			m_cnstTmWld			{};
 	uint8_t*						m_ptrWld			{};
 	XMMATRIX						m_tmViw				= XMMatrixIdentity();
@@ -54,9 +54,11 @@ protected:
 
 	double							m_angle				{};
 
+	UINT							m_numObject			{5};
+	UINT							m_numRegisterConst	{3};
+	UINT							m_numRegisterTex	{2};
 	ComPtr<ID3D12Resource>			m_textureChecker	{};		// assets/res_checker.png
 	ComPtr<ID3D12Resource>			m_textureXlogo		{};		// assets/xlogo.png
-	ComPtr<ID3D12DescriptorHeap>	m_srvHeap2x			{};		// 텍스처용 힙
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleChecker	{};		// checker SRV GPU 핸들
 	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleXlogo	{};		// checker SRV GPU 핸들
 public:

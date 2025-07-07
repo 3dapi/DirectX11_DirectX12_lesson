@@ -103,7 +103,11 @@ std::any D3DApp::GetAttrib(int nCmd)
 		case ATTRIB_CMD::ATTRIB_SCREEN_SIZE:	return &m_screenSize;
 		case ATTRIB_CMD::ATTRIB_DEVICE_RENDER_TARGET_FORAT:	return &m_formatBackBuffer;
 		case ATTRIB_CMD::ATTRIB_DEVICE_DEPTH_STENCIL_FORAT:	return &m_formatDepthBuffer;
-		case ATTRIB_CMD::ATTRIB_DEVICE_CURRENT_FRAME_INDEX:	return &m_d3dCurrentFrameIndex;
+		case ATTRIB_CMD::ATTRIB_DEVICE_CURRENT_FRAME_INDEX:
+		{
+			m_d3dCurrentFrameIndex = m_d3dSwapChain->GetCurrentBackBufferIndex();
+			return &m_d3dCurrentFrameIndex;
+		}
 
 		case ATTRIB_CMD::ATTRIB_DEVICE_VIEWPORT:		return &m_d3dViewport;
 		case ATTRIB_CMD::ATTRIB_DEVICE_SCISSOR_RECT:	return &m_d3dScissorRect;
