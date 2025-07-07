@@ -317,7 +317,7 @@ int MainApp::InitResource()
 		// Create a descriptor heap for the constant buffers.
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-				heapDesc.NumDescriptors = UINT(FRAME_BUFFER_COUNT * (1 + 0) * 2 * 1.5) ;	// FRAME_BUFFER_COUNT * (상수 레지스터 + 텍스처 레지스터) * 상수 버퍼를 변경해서 랜데링할 횟수 * 1.5 (넉넉하게..)
+				heapDesc.NumDescriptors = UINT(FRAME_BUFFER_COUNT * (1 + 0) * m_numObject * 1.5) ;	// FRAME_BUFFER_COUNT * (상수 레지스터 + 텍스처 레지스터) * 상수 버퍼를 변경해서 랜데링할 횟수 * 1.5 (넉넉하게..)
 				heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 				heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));

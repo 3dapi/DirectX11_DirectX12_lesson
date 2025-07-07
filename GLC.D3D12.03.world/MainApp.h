@@ -52,6 +52,7 @@ protected:
 	ConstBufMVP						m_cnstBufMVP		{};
 	uint8_t*						m_csnstPtrMVP		{};
 
+	UINT							m_numObject			{2};		// rendering object
 	XMMATRIX						m_tmWorld2			= XMMatrixIdentity();
 
 	// Variables used with the rendering loop.
