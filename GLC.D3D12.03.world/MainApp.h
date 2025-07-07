@@ -48,11 +48,12 @@ protected:
 	ComPtr<ID3D12Resource>			m_rscVtx			{};
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
 
+	ConstBufMVP						m_bufMVP			{};
 	ComPtr<ID3D12Resource>			m_cnstMVP			{};
-	ConstBufMVP						m_cnstBufMVP		{};
-	uint8_t*						m_csnstPtrMVP		{};
+	uint8_t*						m_ptrMVP			{};
 
-	XMMATRIX						m_tmWorld2			= XMMatrixIdentity();
+	UINT							m_numObject			{5};		// rendering object
+	XMMATRIX						m_tmWorld			[5];
 
 	// Variables used with the rendering loop.
 	float	m_radiansPerSecond	{XM_PIDIV4};

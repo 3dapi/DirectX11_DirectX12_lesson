@@ -50,7 +50,7 @@ int MainApp::Destroy()
 	m_numVtx			= 0;
 	m_numIdx			= 0;
 	m_cnstMVP			->Unmap(0, nullptr);
-	m_csnstPtrMVP		= nullptr;
+	m_ptrMVP			= nullptr;
 	return S_OK;
 }
 
@@ -72,8 +72,11 @@ int MainApp::Update()
 		{
 			// Rotate the cube a small amount.
 			m_angle = t * m_radiansPerSecond;
-			m_cnstBufMVP.m = XMMatrixRotationY(m_angle) * XMMatrixTranslation(-300, 0, 0);
-			m_tmWorld2     = XMMatrixScaling(0.5F, 0.5F, 0.5F) * XMMatrixRotationY(m_angle*3) * XMMatrixTranslation(300, 0, 0);
+			m_tmWorld[0] = XMMatrixRotationY(m_angle);
+			m_tmWorld[1] = XMMatrixScaling(0.5F, 0.5F, 0.5F) * XMMatrixRotationY(m_angle*2.0F) * XMMatrixTranslation(-400,    0, 0);
+			m_tmWorld[2] = XMMatrixScaling(0.7F, 0.7F, 0.7F) * XMMatrixRotationY(m_angle*0.5F) * XMMatrixTranslation( 400,    0, 0);
+			m_tmWorld[3] = XMMatrixScaling(0.4F, 0.4F, 0.4F) * XMMatrixRotationY(m_angle*3.0F) * XMMatrixTranslation(   0, -450, 0);
+			m_tmWorld[4] = XMMatrixScaling(0.3F, 0.3F, 0.3F) * XMMatrixRotationY(m_angle*0.3F) * XMMatrixTranslation(   0,  350, 0);
 		}
 	}
 	return S_OK;
@@ -86,52 +89,36 @@ int MainApp::Render()
 	auto d3dDevice  = std::any_cast<ID3D12Device*>(d3d->GetDevice());
 	auto cmdList    = std::any_cast<ID3D12GraphicsCommandList*>(d3d->GetCommandList());
 	auto currentFrameIndex = *(std::any_cast<UINT*>(d3d->GetAttrib(ATTRIB_DEVICE_CURRENT_FRAME_INDEX)));
-
 	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
+	UINT alignedSize    = ConstBufMVP::ALIGNED_SIZE;
 
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
 
     ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
     cmdList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	// 첫 번째 객체
+	cmdList->SetPipelineState(m_pipelineState.Get());
+	cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
+	cmdList->IASetIndexBuffer(&m_viewIdx);
+
+	for(UINT i=0; i<m_numObject; ++i)
 	{
-		uint8_t* destination = m_csnstPtrMVP + ((currentFrameIndex * 2 + 0) * ConstBufMVP::ALIGNED_SIZE);
-		memcpy(destination, &m_cnstBufMVP, sizeof(m_cnstBufMVP));
+		XMMATRIX curWorld = m_bufMVP.m;
+		m_bufMVP.m = m_tmWorld[i];
 
-		cmdList->SetPipelineState(m_pipelineState.Get());
-		cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+		int bufferIndex = currentFrameIndex * m_numObject + i;
 
-		CD3DX12_GPU_DESCRIPTOR_HANDLE handle = gpuHandle;
-		handle.Offset(currentFrameIndex * 2 + 0, descriptorSize);
+		uint8_t* dest = m_ptrMVP + bufferIndex * alignedSize;
+		memcpy(dest, &m_bufMVP, sizeof(m_bufMVP));
+	
+		CD3DX12_GPU_DESCRIPTOR_HANDLE handle(gpuHandle, bufferIndex, descriptorSize);
 		cmdList->SetGraphicsRootDescriptorTable(0, handle);
 
-		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
-		cmdList->IASetIndexBuffer(&m_viewIdx);
 		cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
-	}
-
-	{
-		XMMATRIX curWorld = m_cnstBufMVP.m;
-		m_cnstBufMVP.m = m_tmWorld2;
-
-		uint8_t* destination = m_csnstPtrMVP + ((currentFrameIndex * 2 + 1) * ConstBufMVP::ALIGNED_SIZE);
-		memcpy(destination, &m_cnstBufMVP, sizeof(m_cnstBufMVP));
-
-		cmdList->SetPipelineState(m_pipelineState.Get());
-		cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
-
-		CD3DX12_GPU_DESCRIPTOR_HANDLE handle = gpuHandle;
-		handle.Offset(currentFrameIndex * 2 + 1, descriptorSize);
-		cmdList->SetGraphicsRootDescriptorTable(0, handle);
-
-		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
-		cmdList->IASetIndexBuffer(&m_viewIdx);
-		cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
-
-		m_cnstBufMVP.m = curWorld;
+		m_bufMVP.m = curWorld;
 	}
     return S_OK;
 }
@@ -317,19 +304,18 @@ int MainApp::InitResource()
 		// Create a descriptor heap for the constant buffers.
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-				heapDesc.NumDescriptors = UINT(FRAME_BUFFER_COUNT * (1 + 0) * 2 * 1.5) ;	// FRAME_BUFFER_COUNT * (상수 레지스터 + 텍스처 레지스터) * 상수 버퍼를 변경해서 랜데링할 횟수 * 1.5 (넉넉하게..)
+				heapDesc.NumDescriptors = UINT(FRAME_BUFFER_COUNT * (1 + 0) * m_numObject * 1.5) ;	// FRAME_BUFFER_COUNT * (상수 레지스터 + 텍스처 레지스터) * 상수 버퍼를 변경해서 랜데링할 횟수 * 1.5 (넉넉하게..)
 				heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 				heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 			hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
 		}
 
-		const UINT bufferCount = FRAME_BUFFER_COUNT * 2;
-		const UINT bufferSize = bufferCount * ConstBufMVP::ALIGNED_SIZE;
+		const UINT b0_count = FRAME_BUFFER_COUNT * m_numObject;
+		const UINT bufferSize = b0_count * ConstBufMVP::ALIGNED_SIZE;
 		CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
 
-
 		UINT d3dDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
+
 		{
 			hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties
 													, D3D12_HEAP_FLAG_NONE
@@ -340,22 +326,26 @@ int MainApp::InitResource()
 			if (FAILED(hr))
 				return hr;
 
-			// Create constant buffer views to access the upload buffer.
-			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cnstMVP->GetGPUVirtualAddress();
-			for (int n = 0; n < bufferCount; ++n)
-			{
-				D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-				desc.BufferLocation = cbvGpuAddress;
-				desc.SizeInBytes = ConstBufMVP::ALIGNED_SIZE;
-				d3dDevice->CreateConstantBufferView(&desc, cbvCpuHandle);
-				cbvGpuAddress += desc.SizeInBytes;
-				cbvCpuHandle.ptr = cbvCpuHandle.ptr + d3dDescriptorSize;
-			}
 			// Map the constant buffers.
 			CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
-			hr = m_cnstMVP->Map(0, &readRange, reinterpret_cast<void**>(&m_csnstPtrMVP));
+			hr = m_cnstMVP->Map(0, &readRange, reinterpret_cast<void**>(&m_ptrMVP));
 			if (FAILED(hr))
 				return hr;
+		}
+
+		{
+			// Create constant buffer views to access the upload buffer.
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_cnstMVP->GetGPUVirtualAddress();
+			D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
+			for (int n = 0; n < b0_count; ++n)
+			{
+				D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+				desc.BufferLocation = gpuAddress;
+				desc.SizeInBytes = ConstBufMVP::ALIGNED_SIZE;
+				d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
+				gpuAddress += desc.SizeInBytes;
+				cpuHandle.ptr += d3dDescriptorSize;
+			}
 		}
 
 		// Close the command list and execute it to begin the vertex/index buffer copy into the GPU's default heap.
@@ -397,13 +387,13 @@ int MainApp::InitConstValue()
 	}
 
 	// This sample makes use of a right-handed coordinate system using row-major matrices.
-	m_cnstBufMVP.p = XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, 0.01f, 5000.0f);
+	m_bufMVP.p = XMMatrixPerspectiveFovLH(fovAngleY, aspectRatio, 0.01f, 5000.0f);
 
 	// Eye is at (0,0.7,1.5), looking at point (0,-0.1,0) with the up-vector along the y-axis.
 	static const XMVECTORF32 eye = { 0.0f,600.0f, -700.0f, 0.0f };
 	static const XMVECTORF32 at =  { 0.0f,  1.0f,    0.0f, 0.0f };
 	static const XMVECTORF32 up =  { 0.0f,  1.0f,    0.0f, 0.0f };
-	m_cnstBufMVP.v = XMMatrixLookAtLH(eye, at, up);
+	m_bufMVP.v = XMMatrixLookAtLH(eye, at, up);
 
 	return S_OK;
 }

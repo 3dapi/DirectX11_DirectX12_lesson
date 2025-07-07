@@ -45,8 +45,8 @@ protected:
 	ComPtr<ID3D12Resource>			m_rscIdxGPU			{};			// index buffer default heap resource
 	ComPtr<ID3D12Resource>			m_rscIdxCPU			{};			// index buffer upload heap resource
 
-	ComPtr<ID3D12Resource>			m_spineTextureRsc	{};		// assets/res_checker.png
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_spineTexture		{};		// checker SRV GPU 핸들
+	ComPtr<ID3D12Resource>			m_textureRsc		{};		// assets/res_checker.png
+	D3D12_GPU_DESCRIPTOR_HANDLE		m_texture			{};		// checker SRV GPU 핸들
 
 	ComPtr<ID3D12Resource>			m_cnstMVP			{};
 	uint8_t*						m_ptrMVP			{};

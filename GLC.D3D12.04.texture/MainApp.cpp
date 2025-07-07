@@ -62,8 +62,8 @@ int MainApp::Destroy()
 	m_cnstMVP		->Unmap(0, nullptr);
 	m_cnstMVP		.Reset();
 	m_ptrMVP		= {};
-	m_spineTextureRsc	.Reset();
-	m_spineTexture	= {};
+	m_textureRsc	.Reset();
+	m_texture	= {};
 
 	return S_OK;
 }
@@ -115,7 +115,7 @@ int MainApp::Render()
 	cmdList->SetGraphicsRootDescriptorTable(0, handleMVP);
 
 	// 4. SRV 핸들 바인딩 (root parameter index 상수 레지스터 다음 3 = t0, 4= t1)
-	cmdList->SetGraphicsRootDescriptorTable(1, m_spineTexture);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_texture);
 
 	// 5. 파이프라인 연결
 	cmdList->SetPipelineState(m_pipelineState.Get());
@@ -201,10 +201,10 @@ int MainApp::InitResource()
 	ComPtr<ID3DBlob> shaderVtx{}, shaderPxl{};
 	{
 		HRESULT hr = S_OK;
-		hr = G2::DXCompileShaderFromFile("Shaders/spine.hlsl", "vs_5_0", "main_vs", &shaderVtx);
+		hr = G2::DXCompileShaderFromFile("Shaders/simple.hlsl", "vs_5_0", "main_vs", &shaderVtx);
 		if(FAILED(hr))
 			return hr;
-		hr = G2::DXCompileShaderFromFile("Shaders/spine.hlsl", "ps_5_0", "main_ps", &shaderPxl);
+		hr = G2::DXCompileShaderFromFile("Shaders/simple.hlsl", "ps_5_0", "main_ps", &shaderPxl);
 		if(FAILED(hr))
 			return hr;
 	}
@@ -279,7 +279,7 @@ int MainApp::InitResource()
 		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
 		{
 			resourceUpload.Begin();
-			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_spineTextureRsc.GetAddressOf());
+			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_textureRsc.GetAddressOf());
 			if(FAILED(hr))
 				return hr;
 			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
@@ -304,14 +304,14 @@ int MainApp::InitResource()
 		{
 			hCpuSrv.Offset(0, descriptorSize);			//
 			hGpuSrv.Offset(0, descriptorSize);			//
-			m_spineTexture = hGpuSrv;					// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
+			m_texture = hGpuSrv;					// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
 
 			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc.Format = m_spineTextureRsc->GetDesc().Format;
+			srvDesc.Format = m_textureRsc->GetDesc().Format;
 			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 			srvDesc.Texture2D.MipLevels = 1;
-			d3dDevice->CreateShaderResourceView(m_spineTextureRsc.Get(), &srvDesc, hCpuSrv);
+			d3dDevice->CreateShaderResourceView(m_textureRsc.Get(), &srvDesc, hCpuSrv);
 		}
 	}
 
