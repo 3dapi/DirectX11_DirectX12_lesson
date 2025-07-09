@@ -41,7 +41,8 @@ SceneSpine::~SceneSpine()
 int SceneSpine::Init()
 {
 	HRESULT hr = S_OK;
-	hr = InitSpine("assets/spine/raptor/raptor-pma.atlas", "assets/spine/raptor/raptor-pro.json");
+
+	hr = InitSpine("assets/spine/spineboy/spineboy-pma.atlas", "assets/spine/spineboy/spineboy-pro.json");
 	if(FAILED(hr))
 		return hr;
 	hr = InitForDevice();
@@ -96,7 +97,7 @@ int SceneSpine::Update(float deltaTime)
 	m_spineSkeleton->update(deltaTime);
 
 	// Calculate the new pose
-	m_spineSkeleton->updateWorldTransform(spine::Physics_Update);
+	m_spineSkeleton->updateWorldTransform(spine::Physics_None);
 
 	// Update spine draw buffer
 	UpdateDrawBuffer();
@@ -348,6 +349,14 @@ int SceneSpine::InitSpine(const string& str_atlas, const string& str_skel)
 
 	m_spineSkeleton = new Skeleton(m_spineSkeletonData);
 	spine::SkeletonData* skelData = m_spineSkeleton->getData();
+
+
+	m_spineSkeleton->setSkin("default");		// 스킨 변경
+	m_spineSkeleton->setSlotsToSetupPose();						// 슬롯(attachment) 갱신
+	m_spineSkeleton->updateWorldTransform(spine::Physics_None);	// 본 transform 계산
+
+
+
 	auto& animations = skelData->getAnimations();
 	// animation name
 	for(int i = 0; i < animations.size(); ++i) {
@@ -386,8 +395,8 @@ int SceneSpine::InitSpine(const string& str_atlas, const string& str_skel)
 	AnimationStateData animationStateData(m_spineSkeletonData);
 	animationStateData.setDefaultMix(0.2f);
 	m_spineAniState = new AnimationState(&animationStateData);
-	m_spineAniState->setAnimation(0, "gun-holster", false);
-	m_spineAniState->addAnimation(0, "roar", false, 0.8F);
+	//m_spineAniState->setAnimation(0, "gun-holster", false);
+	//m_spineAniState->addAnimation(0, "roar", false, 0.8F);
 	m_spineAniState->addAnimation(0, "walk", true, 0);
 
 	m_spineSkeleton->setPosition(0.0F, -300.0F);
