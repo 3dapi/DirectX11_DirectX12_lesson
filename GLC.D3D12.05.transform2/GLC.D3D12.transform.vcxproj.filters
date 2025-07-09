@@ -1,0 +1,78 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="assets">
+      <UniqueIdentifier>{b112fd4e-6233-46b8-bb0a-4910ec44a13a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{6b7c8937-8640-472a-ac6e-06b286c271a4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="resource">
+      <UniqueIdentifier>{19B0CD09-11BE-49EF-95AA-982CA02BEA64}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="src_xpp">
+      <UniqueIdentifier>{FD5D9466-8272-4D91-8EDA-6D30722CCA3E}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="src_xhh">
+      <UniqueIdentifier>{F26A2BC4-8DEC-40D1-B5C5-AB0AB6F13F7C}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="src_common">
+      <UniqueIdentifier>{8801bbea-179a-4019-9213-0285e34ffa1e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="MainApp.cpp">
+      <Filter>src_xpp</Filter>
+    </ClCompile>
+    <ClCompile Include="G2Util.cpp">
+      <Filter>src_common</Filter>
+    </ClCompile>
+    <ClCompile Include="G2Base.cpp">
+      <Filter>src_common</Filter>
+    </ClCompile>
+    <ClCompile Include="D3DApp.cpp">
+      <Filter>src_common</Filter>
+    </ClCompile>
+    <ClCompile Include="_main.cpp">
+      <Filter>src_xpp</Filter>
+    </ClCompile>
+    <ClCompile Include="GameTimer.cpp">
+      <Filter>src_common</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="MainApp.h">
+      <Filter>src_xhh</Filter>
+    </ClInclude>
+    <ClInclude Include="D3DApp.h">
+      <Filter>src_common</Filter>
+    </ClInclude>
+    <ClInclude Include="G2Util.h">
+      <Filter>src_common</Filter>
+    </ClInclude>
+    <ClInclude Include="G2Base.h">
+      <Filter>src_common</Filter>
+    </ClInclude>
+    <ClInclude Include="GameTimer.h">
+      <Filter>src_common</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\simple.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="assets\res_checker.png">
+      <Filter>assets</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config">
+      <Filter>src_common</Filter>
+    </None>
+  </ItemGroup>
+</Project>
