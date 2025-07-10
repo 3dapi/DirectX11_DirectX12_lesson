@@ -79,10 +79,11 @@ protected:
 	// spine instance
 	vector<string>				m_spineAnimations	;
 	string						m_spineTextureName	;
-	spine::Skeleton*			m_spineSkeleton		{};
-	spine::AnimationState*		m_spineAniState		{};
-	spine::SkeletonData*		m_spineSkeletonData	{};
-	spine::Atlas*				m_spineAtlas		{};
+	spine::Skeleton*			m_spineSkeleton			{};
+	spine::AnimationStateData*	m_spineAniStateData		{};
+	spine::AnimationState*		m_spineAniState			{};
+	spine::SkeletonData*		m_spineSkeletonData		{};
+	spine::Atlas*				m_spineAtlas			{};
 
 public:
 	SceneSpine();

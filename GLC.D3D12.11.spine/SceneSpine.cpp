@@ -392,9 +392,10 @@ int SceneSpine::InitSpine(const string& str_atlas, const string& str_skel)
 	m_maxIdxCount = UINT( (maxIndexCount>8) ? maxIndexCount : 8 );
 	m_drawBuf.resize(size_t(3+ drawOrder.size() * 1.2), {});
 
-	AnimationStateData animationStateData(m_spineSkeletonData);
-	animationStateData.setDefaultMix(0.2f);
-	m_spineAniState = new AnimationState(&animationStateData);
+	m_spineAniStateData = new AnimationStateData(m_spineSkeletonData);
+	m_spineAniState = new AnimationState(m_spineAniStateData);
+
+	m_spineAniStateData->setDefaultMix(0.2f);
 	//m_spineAniState->setAnimation(0, "gun-holster", false);
 	//m_spineAniState->addAnimation(0, "roar", false, 0.8F);
 	m_spineAniState->addAnimation(0, "walk", true, 0);
