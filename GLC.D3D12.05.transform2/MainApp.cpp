@@ -59,10 +59,13 @@ int MainApp::Init()
 	m_timer.Reset();
 
 	HRESULT hr = S_OK;
-	hr = InitResource();
+	hr = InitDeviceResource();
 	if(FAILED(hr))
 		return hr;
-	hr = InitConstValue();
+	hr = SetupResource();
+	if (FAILED(hr))
+		return hr;
+	hr = InitDefaultConstant();
 	if(FAILED(hr))
 		return hr;
 
@@ -146,9 +149,9 @@ int MainApp::Render()
 
 		// 6. CBV 핸들 계산
 		auto cbv_base = cbvHeap->GetGPUDescriptorHandleForHeapStart();
-		auto cbv0 = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, FRAME_BUFFER_COUNT * 0, descriptorSize);	// 0 : cb0
-		auto cbv1 = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, FRAME_BUFFER_COUNT * 1, descriptorSize);	// 1 : cb1
-		auto cbv2 = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, FRAME_BUFFER_COUNT * 2, descriptorSize);	// 2 : cb1
+		auto cbv0 = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, FRAME_BUFFER_COUNT * 0, descriptorSize);	// Root Parameter Index: 0 = b0(world)
+		auto cbv1 = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, FRAME_BUFFER_COUNT * 1, descriptorSize);	// Root Parameter Index: 1 = b1(view)
+		auto cbv2 = CD3DX12_GPU_DESCRIPTOR_HANDLE(cbv_base, FRAME_BUFFER_COUNT * 2, descriptorSize);	// Root Parameter Index: 2 = b2(projection)
 
 		CD3DX12_GPU_DESCRIPTOR_HANDLE handleWld(cbv0, currentFrameIndex, descriptorSize);
 		CD3DX12_GPU_DESCRIPTOR_HANDLE handleViw(cbv1, currentFrameIndex, descriptorSize);
@@ -171,39 +174,81 @@ int MainApp::Render()
 }
 
 
-int MainApp::InitResource()
+int MainApp::InitDeviceResource()
 {
 	HRESULT hr = S_OK;
-	auto d3dDevice    = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
 	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
-	auto commandList  = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-	// setup the const buffer desc buffer size
-	m_cbvListSize = vector<UINT>{ ALIGNED_MATRIX_SIZE_B0, ALIGNED_MATRIX_SIZE_B1, ALIGNED_MATRIX_SIZE_B2 };
-
-	// implement to object list
-	for(size_t i=0; i< m_objCbv.size(); ++i)
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// 1. 완전 독립(공유가능) : 텍스처 생성 및 업로드 (CreateWICTextureFromFile + ResourceUploadBatch)
 	{
-		m_objCbv[i].setupRpl(m_cbvListSize);
+		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
+		{
+			resourceUpload.Begin();
+			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_textureChecker.GetAddressOf());
+			if (FAILED(hr))
+				return hr;
+			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
+			auto uploadOp = resourceUpload.End(commandQueue);
+			uploadOp.wait();  // GPU 업로드 완료 대기
+		}
+	}
+	{
+		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
+		{
+			resourceUpload.Begin();
+			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/xlogo.png", m_textureXlogo.GetAddressOf());
+			if (FAILED(hr))
+				return hr;
+			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
+			auto uploadOp = resourceUpload.End(commandQueue);
+			uploadOp.wait();  // GPU 업로드 완료 대기
+		}
 	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// 1. Create a root signature with a single constant buffer slot.
+	// 2. 완전 독립(공유가능) : 셰이더 자원
+	// compile shader
+	ComPtr<ID3DBlob> shaderVtx{}, shaderPxl{};
+	{
+		HRESULT hr = S_OK;
+		hr = G2::DXCompileShaderFromFile("Shaders/simple.hlsl", "vs_5_0", "main_vs", &shaderVtx);
+		if (FAILED(hr))
+			return hr;
+		hr = G2::DXCompileShaderFromFile("Shaders/simple.hlsl", "ps_5_0", "main_ps", &shaderPxl);
+		if (FAILED(hr))
+			return hr;
+	}
+	// Create the pipeline state once the shaders are loaded.
+	static const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+	{
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"COLOR"   , 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, sizeof(XMFLOAT3), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT   , 0, sizeof(XMFLOAT3) + sizeof(uint32_t), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+	};
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// 3. 완전 독립(공유가능) : 셰이더와 root signature가 일치.
+	// Create a root signature with a single constant buffer slot.
 	{
 		// sampler register 갯수는 상관 없음.
-		CD3DX12_STATIC_SAMPLER_DESC staticSampler[] =
+		static CD3DX12_STATIC_SAMPLER_DESC staticSampler[] =
 		{
 			{ 0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
 			{ 1, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
 			{ 2, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
 			{ 3, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
 			{ 4, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
-			//{ 5, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
-			//{ 6, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
-			//{ 7, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
-			//{ 8, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
-			//{ 9, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+			{ 5, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+			{ 6, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+			{ 7, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+			{ 8, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+			{ 9, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+			{10, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+			{11, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
 		};
 
 		// 5 = 상수 레지스터 3 + 텍스처 레지스터 2
@@ -225,7 +270,7 @@ int MainApp::InitResource()
 		rootSigDesc.Init(
 			_countof(rootParams),
 			rootParams,
-			5,					// sampler register 숫자.
+			12,					// sampler register 숫자.
 			staticSampler,		// sampler register desc
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
 			D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
@@ -235,38 +280,19 @@ int MainApp::InitResource()
 
 		ComPtr<ID3DBlob> pSignature{}, pError{};
 		HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &pSignature, &pError);
-		if(FAILED(hr))
+		if (FAILED(hr))
 			return hr;
 		hr = d3dDevice->CreateRootSignature(0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature));
-		if(FAILED(hr))
+		if (FAILED(hr))
 			return hr;
-
 	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// 2. pipe line 설정
-	// compile shader
-	ComPtr<ID3DBlob> shaderVtx{}, shaderPxl{};
-	{
-		HRESULT hr = S_OK;
-		hr = G2::DXCompileShaderFromFile("Shaders/simple.hlsl", "vs_5_0", "main_vs", &shaderVtx);
-		if(FAILED(hr))
-			return hr;
-		hr = G2::DXCompileShaderFromFile("Shaders/simple.hlsl", "ps_5_0", "main_ps", &shaderPxl);
-		if(FAILED(hr))
-			return hr;
-	}
+	// 4. 부분 독립(공유가능) : 파이프라인 스테이트: 루트 시그너처 필수:
 	// Create the pipeline state once the shaders are loaded.
 	{
-		const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-		{
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"COLOR"   , 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, sizeof(XMFLOAT3), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT   , 0, sizeof(XMFLOAT3) + sizeof(uint32_t), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-		};
-
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-		psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
+		psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
 		psoDesc.pRootSignature = m_rootSignature.Get();
 		psoDesc.VS = CD3DX12_SHADER_BYTECODE(shaderVtx.Get());
 		psoDesc.PS = CD3DX12_SHADER_BYTECODE(shaderPxl.Get());
@@ -280,104 +306,80 @@ int MainApp::InitResource()
 		psoDesc.DSVFormat = *std::any_cast<DXGI_FORMAT*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_DEVICE_DEPTH_STENCIL_FORAT));
 		psoDesc.SampleDesc.Count = 1;
 		hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
-		if(FAILED(hr))
+		if (FAILED(hr))
 			return hr;
 	};
 
+	// setup the const buffer desc buffer size
+	m_cbvListSize = vector<UINT>{ ALIGNED_MATRIX_SIZE_B0, ALIGNED_MATRIX_SIZE_B1, ALIGNED_MATRIX_SIZE_B2 };
+
+	// implement to object list
+	for (size_t i = 0; i < m_objCbv.size(); ++i)
+	{
+		m_objCbv[i].setupRpl(m_cbvListSize);
+	}
+
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// 3. 상수 + 텍스처 버퍼 heap 생성
+	// 5. Rendering Object 종속: 상수 버퍼 + 텍스처 SRV용 Descriptor Heap: 변수 의존은 없으나 렌더링 오브젝트에 종속. 공유하면 마지막에 쓴 값으로 렌더링
 	// Create a descriptor heap for the constant buffers.
 	UINT numDescriptor = FRAME_BUFFER_COUNT * m_numRegisterConst		// per-object b0~ m_numRegisterConst
-						+ m_numRegisterTex;								// SRV for textures(current is 2)
-	for(size_t i=0; i<m_objCbv.size(); ++i)
+		+ m_numRegisterTex;								// SRV for textures(current is 2)
+	for (size_t i = 0; i < m_objCbv.size(); ++i)
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 		heapDesc.NumDescriptors = numDescriptor;
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_objCbv[i].dscCbvHeap));
-		if(FAILED(hr))
+		if (FAILED(hr))
 			return hr;
 		m_objCbv[i].descHandle = m_objCbv[i].dscCbvHeap->GetGPUDescriptorHandleForHeapStart();
 	}
-		
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// 상수 버퍼용 리소스 생성
-	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-	for(size_t i=0; i<m_objCbv.size(); ++i)
-	{
-		auto& cbv = m_objCbv[i];
-		for(size_t k=0; k< cbv.rpl.size(); ++k)
-		{
-			CD3DX12_RESOURCE_DESC cbd = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * cbv.rpl[ k ].len);
-			hr = d3dDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE
-												, &cbd, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&cbv.rpl[ k ].rsc));
-			if(FAILED(hr))
-				return hr;
-			CD3DX12_RANGE readRange(0, 0);
-			hr = cbv.rpl[ k ].rsc->Map(0, &readRange, reinterpret_cast<void**>(&cbv.rpl[ k ].ptr));
-			if (FAILED(hr))
-				return hr;
-		}
-	}
 
-	// 4. 상수 버퍼 뷰 생성.
-	for(size_t i=0; i<m_objCbv.size(); ++i)
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// 6. Descriptor Heap 의존: 상수 버퍼용 리소스, 뷰: 변수 의존은 없으나 상수 버퍼 디스크립션 힙에 의존. 공유하면 마지막에 쓴 값으로 렌더링
+	// Create a constant buffer descriptor heap and view for constant buffers.
+	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+	for (size_t i = 0; i < m_objCbv.size(); ++i)
 	{
 		auto& cbv = m_objCbv[i];
 		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = cbv.dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
-		for(size_t k=0; k< cbv.rpl.size(); ++k)
+
+		for (size_t k = 0; k < cbv.rpl.size(); ++k)
 		{
-			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = cbv.rpl[ k ].rsc->GetGPUVirtualAddress();
-			UINT bufSize = cbv.rpl[ k ].len;
+			CD3DX12_RESOURCE_DESC cbd = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * cbv.rpl[k].len);
+			hr = d3dDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE
+												, &cbd, D3D12_RESOURCE_STATE_GENERIC_READ
+												, nullptr, IID_PPV_ARGS(&cbv.rpl[k].rsc));
+			if (FAILED(hr))
+				return hr;
+			CD3DX12_RANGE readRange(0, 0);
+			hr = cbv.rpl[k].rsc->Map(0, &readRange, reinterpret_cast<void**>(&cbv.rpl[k].ptr));
+			if (FAILED(hr))
+				return hr;
+
+			// 4. 상수 버퍼 뷰 생성.
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = cbv.rpl[k].rsc->GetGPUVirtualAddress();
+			UINT bufSize = cbv.rpl[k].len;
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 
-			for (UINT n=0; n<FRAME_BUFFER_COUNT; ++n)
+			for (UINT n = 0; n < FRAME_BUFFER_COUNT; ++n)
 			{
 				desc.BufferLocation = gpuAddress;
-				desc.SizeInBytes    = bufSize;
+				desc.SizeInBytes = bufSize;
 				d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
-				gpuAddress    += desc.SizeInBytes;
+				gpuAddress += desc.SizeInBytes;
 				cpuHandle.ptr += descriptorSize;
 			}
 		}
 	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// 5. 텍스처 생성 및 업로드 (CreateWICTextureFromFile + ResourceUploadBatch)
-	{
-		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
-		{
-			resourceUpload.Begin();
-			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/res_checker.png", m_textureChecker.GetAddressOf());
-			if(FAILED(hr))
-				return hr;
-			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
-			auto uploadOp = resourceUpload.End(commandQueue);
-			uploadOp.wait();  // GPU 업로드 완료 대기
-		}
-	}
-	{
-		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
-		{
-			resourceUpload.Begin();
-			hr = DirectX::CreateWICTextureFromFile(d3dDevice, resourceUpload, L"assets/xlogo.png", m_textureXlogo.GetAddressOf());
-			if(FAILED(hr))
-				return hr;
-			auto commandQueue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
-			auto uploadOp = resourceUpload.End(commandQueue);
-			uploadOp.wait();  // GPU 업로드 완료 대기
-		}
-	}
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// 5 텍스처 레지스터 SRV 디스크립터 생성 
-	// 3개 상수 레지스터 다음부터 텍스처 레지스터(셰이더 참고)
-	//FRAME_BUFFER_COUNT * m_numRegisterConst <- 3
+	// 7. Descriptor Heap 의존: 텍스처 디스크립터: 6.의 연장
+	// Create Texture register SRV descriptor.
+	// 3개 상수 레지스터 다음부터 텍스처 레지스터(셰이더 참고) : FRAME_BUFFER_COUNT * m_numRegisterConst <- 3
 	UINT baseSRVIndex = FRAME_BUFFER_COUNT * m_numRegisterConst;
-
-	for(size_t i=0; i<m_objCbv.size(); ++i)
+	for (size_t i = 0; i < m_objCbv.size(); ++i)
 	{
 		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_objCbv[i].dscCbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
 		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_objCbv[i].dscCbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
@@ -408,8 +410,20 @@ int MainApp::InitResource()
 			hGpuSrv.ptr += descriptorSize;
 		}
 	}
+	return S_OK;
+}
+
+
+int MainApp::SetupResource()
+{
+	HRESULT hr = S_OK;
+	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
+	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Data update
 	// 리소스 버텍스 버퍼
 	// 버텍스 버퍼는 CreateCommittedResource 내부에서 heap 사용?
 	// 자원의 생성은 해당 hlsl 맞게 설정하면 되나, 지금은 정점 버퍼 생성과 동시에 gpu에 업로드 함.
@@ -514,13 +528,13 @@ int MainApp::InitResource()
 		ID3D12CommandList* ppCommandLists[] = {commandList};
 		auto commandQue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
 		commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-		// gpu 완료 될 때 까지 기다림
+		// 커맨드 리스트 종료 및 GPU 대기
 		D3DApp::getInstance()-> WaitForGpu();
 	}
 	return S_OK;
 }
 
-int MainApp::InitConstValue()
+int MainApp::InitDefaultConstant()
 {
 	auto screenSize = std::any_cast<::SIZE*>(IG2GraphicsD3D::getInstance()->GetAttrib(ATTRIB_SCREEN_SIZE));
 	float aspectRatio = 1280.0F / 640.0F;

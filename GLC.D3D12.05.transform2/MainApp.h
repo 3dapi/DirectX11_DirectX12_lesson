@@ -32,7 +32,7 @@ struct CBV_RSC
 {
 	ID3D12Resource*	rsc	{};
 	uint8_t*		ptr	{};
-	UINT			len	{};
+	UINT			len	{};		// per-constant CBV resource per object (e.g., world/view/proj)
 };
 
 struct ConstHeap
@@ -92,8 +92,9 @@ public:
 	virtual int Update();
 	virtual int Render();
 
-	int InitResource();
-	int InitConstValue();
+	int InitDeviceResource();
+	int SetupResource();
+	int InitDefaultConstant();
 };
 
 #endif
