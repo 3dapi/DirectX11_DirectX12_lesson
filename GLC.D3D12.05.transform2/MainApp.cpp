@@ -27,28 +27,21 @@ const static int ALIGNED_MATRIX_SIZE_B2 = G2::align256BufferSize(sizeof(XMMATRIX
 
 ConstHeap::~ConstHeap()
 {
-	if (dscCbvHeap)
-	{
+	if (dscCbvHeap) {
 		dscCbvHeap->Release();
 		dscCbvHeap = {};
 		descHandle.ptr = {};
 	}
-	if (cnstTmWld)
-	{
-		cnstTmWld->Unmap(0, nullptr);
-		cnstTmWld->Release();
-		ptrWld = nullptr;
-	}
-	if (cnstTmViw)
-	{
-		cnstTmViw->Release();
-		ptrViw = {};
-	}
-	if (cnstTmPrj)
-	{
-		cnstTmPrj->Unmap(0, nullptr);
-		cnstTmPrj->Release();
-		ptrPrj = nullptr;
+	if (!rpl.empty()) {
+		for (size_t i = 0; i < rpl.size(); ++i) {
+			if (rpl[i].rsc) {
+				rpl[i].rsc->Unmap(0, nullptr);
+				rpl[i].rsc->Release();
+				rpl[i].ptr = nullptr;
+				rpl[i].len = 0;
+			}
+		}
+		rpl.clear();
 	}
 }
 
@@ -112,13 +105,14 @@ int MainApp::Update()
 		for(size_t i=0; i< m_objCbv.size(); ++i)
 		{
 			uint8_t* dest = {};
-			dest = m_objCbv[i].ptrWld + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B0);
+			auto& cbv = m_objCbv[i];
+			dest = cbv.rpl[0].ptr + (currentFrameIndex * cbv.rpl[0].len);
 			memcpy(dest, &m_objValue[i].tmWld, sizeof(XMMATRIX));
 
-			dest = m_objCbv[i].ptrViw + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B1);
+			dest = cbv.rpl[1].ptr + (currentFrameIndex * cbv.rpl[1].len);
 			memcpy(dest, &m_objValue[i].tmViw, sizeof(XMMATRIX));
 
-			dest = m_objCbv[i].ptrPrj + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B2);
+			dest = cbv.rpl[2].ptr + (currentFrameIndex * cbv.rpl[2].len);
 			memcpy(dest, &m_objValue[i].tmPrj, sizeof(XMMATRIX));
 		}
 	}
@@ -180,9 +174,19 @@ int MainApp::Render()
 int MainApp::InitResource()
 {
 	HRESULT hr = S_OK;
-	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto d3dDevice    = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
 	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
-	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+	auto commandList  = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	// setup the const buffer desc buffer size
+	m_cbvListSize = vector<UINT>{ ALIGNED_MATRIX_SIZE_B0, ALIGNED_MATRIX_SIZE_B1, ALIGNED_MATRIX_SIZE_B2 };
+
+	// implement to object list
+	for(size_t i=0; i< m_objCbv.size(); ++i)
+	{
+		m_objCbv[i].setupRpl(m_cbvListSize);
+	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 1. Create a root signature with a single constant buffer slot.
@@ -299,94 +303,40 @@ int MainApp::InitResource()
 		
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 상수 버퍼용 리소스 생성
+	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
 	for(size_t i=0; i<m_objCbv.size(); ++i)
 	{
-		CD3DX12_RANGE readRange(0, 0);
-		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC constantBufferDesc0 = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * ALIGNED_MATRIX_SIZE_B0);
-
-		hr = d3dDevice->CreateCommittedResource(&heapProperties
-												, D3D12_HEAP_FLAG_NONE
-												, &constantBufferDesc0
-												, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&m_objCbv[i].cnstTmWld));
-		if(FAILED(hr))
-			return hr;
-		readRange = CD3DX12_RANGE(0, 0);
-		hr = m_objCbv[i].cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_objCbv[i].ptrWld));
-		if (FAILED(hr))
-			return hr;
-
-		CD3DX12_RESOURCE_DESC constantBufferDesc1 = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * ALIGNED_MATRIX_SIZE_B1);
-		hr = d3dDevice->CreateCommittedResource(&heapProperties
-												, D3D12_HEAP_FLAG_NONE
-												, &constantBufferDesc1
-												, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&m_objCbv[i].cnstTmViw));
-		if(FAILED(hr))
-			return hr;
-		readRange = CD3DX12_RANGE(0, 0);
-		hr = m_objCbv[i].cnstTmViw->Map(0, &readRange, reinterpret_cast<void**>(&m_objCbv[i].ptrViw));
-		if (FAILED(hr))
-			return hr;
-
-		CD3DX12_RESOURCE_DESC constantBufferDesc2 = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * ALIGNED_MATRIX_SIZE_B2);
-		hr = d3dDevice->CreateCommittedResource(&heapProperties
-												, D3D12_HEAP_FLAG_NONE
-												, &constantBufferDesc2
-												, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&m_objCbv[i].cnstTmPrj));
-		if(FAILED(hr))
-			return hr;
-		readRange = CD3DX12_RANGE(0, 0);
-		hr = m_objCbv[i].cnstTmPrj->Map(0, &readRange, reinterpret_cast<void**>(&m_objCbv[i].ptrPrj));
-		if (FAILED(hr))
-			return hr;
+		auto& cbv = m_objCbv[i];
+		for(size_t k=0; k< cbv.rpl.size(); ++k)
+		{
+			CD3DX12_RESOURCE_DESC cbd = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * cbv.rpl[ k ].len);
+			hr = d3dDevice->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE
+												, &cbd, D3D12_RESOURCE_STATE_GENERIC_READ
+												, nullptr, IID_PPV_ARGS(&cbv.rpl[ k ].rsc));
+			if(FAILED(hr))
+				return hr;
+			CD3DX12_RANGE readRange(0, 0);
+			hr = cbv.rpl[ k ].rsc->Map(0, &readRange, reinterpret_cast<void**>(&cbv.rpl[ k ].ptr));
+			if (FAILED(hr))
+				return hr;
+		}
 	}
 
-	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	// 4. 상수 레지스터.
+	// 4. 상수 버퍼 뷰 생성.
 	for(size_t i=0; i<m_objCbv.size(); ++i)
 	{
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = m_objCbv[i].dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
-		// b0
+		auto& cbv = m_objCbv[i];
+		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = cbv.dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
+		for(size_t k=0; k< cbv.rpl.size(); ++k)
 		{
-			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_objCbv[i].cnstTmWld->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = cbv.rpl[ k ].rsc->GetGPUVirtualAddress();
+			UINT bufSize = cbv.rpl[ k ].len;
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 
-			for (UINT n = 0; n < FRAME_BUFFER_COUNT; ++n)
+			for (UINT n=0; n<FRAME_BUFFER_COUNT; ++n)
 			{
 				desc.BufferLocation = gpuAddress;
-				desc.SizeInBytes    = ALIGNED_MATRIX_SIZE_B0;
-				d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
-				gpuAddress    += desc.SizeInBytes;
-				cpuHandle.ptr += descriptorSize;
-			}
-		}
-		// b1
-		{
-			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_objCbv[i].cnstTmViw->GetGPUVirtualAddress();
-			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-
-			for (UINT n = 0; n < FRAME_BUFFER_COUNT; ++n)
-			{
-				desc.BufferLocation = gpuAddress;
-				desc.SizeInBytes    = ALIGNED_MATRIX_SIZE_B1;
-				d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
-				gpuAddress    += desc.SizeInBytes;
-				cpuHandle.ptr += descriptorSize;
-			}
-		}
-		// b2
-		{
-			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_objCbv[i].cnstTmPrj->GetGPUVirtualAddress();
-			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-
-			for (UINT n = 0; n < FRAME_BUFFER_COUNT; ++n)
-			{
-				desc.BufferLocation = gpuAddress;
-				desc.SizeInBytes    = ALIGNED_MATRIX_SIZE_B2;
+				desc.SizeInBytes    = bufSize;
 				d3dDevice->CreateConstantBufferView(&desc, cpuHandle);
 				gpuAddress    += desc.SizeInBytes;
 				cpuHandle.ptr += descriptorSize;

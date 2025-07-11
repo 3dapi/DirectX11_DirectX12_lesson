@@ -28,25 +28,34 @@ struct Vertex
 	XMFLOAT2 t;
 };
 
+struct CBV_RSC
+{
+	ID3D12Resource*	rsc	{};
+	uint8_t*		ptr	{};
+	UINT			len	{};
+};
+
 struct ConstHeap
 {
 	ID3D12DescriptorHeap*		dscCbvHeap	{};
 	D3D12_GPU_DESCRIPTOR_HANDLE	descHandle	{};
-	ID3D12Resource*				cnstTmWld	{};
-	uint8_t*					ptrWld		{};
-	ID3D12Resource*				cnstTmViw	{};
-	uint8_t*					ptrViw		{};
-	ID3D12Resource*				cnstTmPrj	{};
-	uint8_t*					ptrPrj		{};
+	vector<CBV_RSC>				rpl			{};
 
 	~ConstHeap();
+	void setupRpl(const vector<UINT>& rplSize)
+	{
+		for(size_t i=0; i<rplSize.size(); ++i)
+		{
+			rpl.push_back({ nullptr, nullptr, rplSize[i] });
+		}
+	}
 };
 
 struct ConstObject
 {
-	XMMATRIX					tmWld		{};
-	XMMATRIX					tmViw		= XMMatrixIdentity();
-	XMMATRIX					tmPrj		= XMMatrixIdentity();
+	XMMATRIX		tmWld		{};
+	XMMATRIX		tmViw		= XMMatrixIdentity();
+	XMMATRIX		tmPrj		= XMMatrixIdentity();
 };
 
 class MainApp
@@ -63,6 +72,8 @@ protected:
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
 
 	double							m_angle				{};
+	vector<UINT>					m_cbvListSize		;
+
 	vector<ConstHeap>				m_objCbv	{ 5,  ConstHeap{} };
 	vector<ConstObject>				m_objValue	{ 5,  ConstObject{} };
 
