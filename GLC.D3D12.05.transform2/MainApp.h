@@ -59,12 +59,14 @@ protected:
 	// Direct3D resources for cube geometry.
 	ComPtr<ID3D12RootSignature>		m_rootSignature		{};
 	ComPtr<ID3D12PipelineState>		m_pipelineState		{};
-	D3D12_VERTEX_BUFFER_VIEW		m_viewVtx			{};
-	D3D12_INDEX_BUFFER_VIEW			m_viewIdx			{};
-	UINT							m_numVtx			{};
-	UINT							m_numIdx			{};
-	ComPtr<ID3D12Resource>			m_rscVtx			{};
-	ComPtr<ID3D12Resource>			m_rscIdx			{};
+
+	UINT							m_vtxCount			{};
+	ComPtr<ID3D12Resource>			m_vtxGPU			{};			// vertex buffer default heap resource
+	D3D12_VERTEX_BUFFER_VIEW		m_vtxView			{};
+
+	UINT							m_idxCount			{};
+	ComPtr<ID3D12Resource>			m_idxGPU			{};			// index buffer default heap resource
+	D3D12_INDEX_BUFFER_VIEW			m_idxView			{};
 
 	vector<UINT>					m_cbvListSize		;
 	vector<ID3D12Resource*>			m_textureLst		;

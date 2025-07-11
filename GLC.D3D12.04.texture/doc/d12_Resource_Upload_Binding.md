@@ -10,8 +10,8 @@
 - 복사 후에 `GetGPUVirtualAddress()` 사용하여 `D3D12_VERTEX_BUFFER_VIEW`, `D3D12_INDEX_BUFFER_VIEW` 설정
 
 ```cpp
-m_viewVtx.BufferLocation = m_rscVtx->GetGPUVirtualAddress();
-m_viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
+m_vtxView.BufferLocation = m_rscVtx->GetGPUVirtualAddress();
+m_idxView.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
 ```
 
 ## 2. Constant Buffer (CBV)

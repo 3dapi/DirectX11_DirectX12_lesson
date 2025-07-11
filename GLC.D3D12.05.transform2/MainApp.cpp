@@ -103,10 +103,10 @@ int MainApp::Destroy()
 
 	m_rootSignature.Reset();
 	m_pipelineState.Reset();
-	m_viewVtx = {};
-	m_viewIdx = {};
-	m_numVtx = 0;
-	m_numIdx = 0;
+	m_vtxView = {};
+	m_vtxView = {};
+	m_vtxCount = 0;
+	m_idxCount = 0;
 
 	m_objCbv.clear();
 	m_objValue.clear();
@@ -164,8 +164,8 @@ int MainApp::Render()
 	// 3. 토폴로지
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	// 4. 버택스, 인덱스 버퍼
-	cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
-	cmdList->IASetIndexBuffer(&m_viewIdx);
+	cmdList->IASetVertexBuffers(0, 1, &m_vtxView);
+	cmdList->IASetIndexBuffer(&m_idxView);
 
 	for (size_t i=0; i<m_objCbv.size(); ++i)
 	{
@@ -192,7 +192,7 @@ int MainApp::Render()
 		}
 		
 		// 8. draw
-		cmdList->DrawIndexedInstanced(m_numIdx, 1, 0, 0, 0);
+		cmdList->DrawIndexedInstanced(m_idxCount, 1, 0, 0, 0);
 	}
 
 	return S_OK;
@@ -255,7 +255,7 @@ int MainApp::InitDeviceResource()
 		if (FAILED(hr))
 			return hr;
 	}
-	// Create the pipeline state once the shaders are loaded.
+	// Setup the input element decription.
 	static const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 	{
 		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -366,6 +366,7 @@ int MainApp::InitDeviceResource()
 		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// 5. Rendering Object 종속: 상수 버퍼 + 텍스처 SRV용 Descriptor Heap: 변수 의존은 없으나 렌더링 오브젝트에 종속. 공유하면 마지막에 쓴 값으로 렌더링
 		// Create a descriptor heap for the constant buffers.
+		// ★★★★★★★★★★★★★★★
 
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 		heapDesc.NumDescriptors = numDescriptor;
@@ -407,8 +408,7 @@ int MainApp::InitDeviceResource()
 				gpuAddress += desc.SizeInBytes;
 				cpuHandle.ptr += descriptorSize;
 			}
-		}
-	
+		}	
 
 		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// 7. Descriptor Heap 의존: 텍스처 디스크립터: 6.의 연장
@@ -440,9 +440,9 @@ int MainApp::InitDeviceResource()
 int MainApp::SetupResource()
 {
 	HRESULT hr = S_OK;
-	auto d3dDevice = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
-	auto commandAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
-	auto commandList = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
+	auto d3dDevice      = std::any_cast<ID3D12Device*>(IG2GraphicsD3D::getInstance()->GetDevice());
+	auto commandAlloc   = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
+	auto commandList    = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -450,110 +450,138 @@ int MainApp::SetupResource()
 	// 리소스 버텍스 버퍼
 	// 버텍스 버퍼는 CreateCommittedResource 내부에서 heap 사용?
 	// 자원의 생성은 해당 hlsl 맞게 설정하면 되나, 지금은 정점 버퍼 생성과 동시에 gpu에 업로드 함.
-	// commitList Reset-> command que  excute -> gpu wait 과정이 있어 맨 뒤로 옮김
+	// commitList Reset-> command que  excute -> gpu wait 과정
+
+	// ※ 정점 버퍼 업로드가 있음. commandList->ResourceBarrier ..
+	// commandlist alloc 이 필요
+
+	Vertex cubeVertices[] =
 	{
-		// ※ 정점 버퍼 업로드가 있음. commandList->ResourceBarrier ..
-		// commandlist alloc 이 필요
-		hr = commandAlloc->Reset();
-		if(FAILED(hr))
-			return hr;
-		hr = commandList->Reset(commandAlloc, nullptr);  // PSO는 루프 내에서 설정 예정
-		if(FAILED(hr))
-			return hr;
+		{{-120.0f,  120.0f, -120.0f}, {  0,   0, 255, 255}, {1.0f, 0.0f}},
+		{{ 120.0f,  120.0f, -120.0f}, {  0, 255,   0, 255}, {0.0f, 0.0f}},
+		{{ 120.0f,  120.0f,  120.0f}, {  0, 255, 255, 255}, {0.0f, 0.0f}},
+		{{-120.0f,  120.0f,  120.0f}, {255,   0,   0, 255}, {1.0f, 0.0f}},
+		{{-120.0f, -120.0f, -120.0f}, {255,   0, 255, 255}, {1.0f, 1.0f}},
+		{{ 120.0f, -120.0f, -120.0f}, {255, 255,   0, 255}, {0.0f, 1.0f}},
+		{{ 120.0f, -120.0f,  120.0f}, {255, 255, 255, 255}, {0.0f, 1.0f}},
+		{{-120.0f, -120.0f,  120.0f}, { 70,  70,  70, 255}, {1.0f, 1.0f}},
+	};
+	unsigned short indices[] =
+	{
+		3, 1, 0, 2, 1, 3,
+		0, 5, 4, 1, 5, 0,
+		3, 4, 7, 0, 4, 3,
+		1, 6, 5, 2, 6, 1,
+		2, 7, 6, 3, 7, 2,
+		6, 4, 5, 7, 4, 6,
+	};
 
-		Vertex cubeVertices[] =
-		{
-			{{-120.0f,  120.0f, -120.0f}, {  0,   0, 255, 255}, {1.0f, 0.0f}},
-			{{ 120.0f,  120.0f, -120.0f}, {  0, 255,   0, 255}, {0.0f, 0.0f}},
-			{{ 120.0f,  120.0f,  120.0f}, {  0, 255, 255, 255}, {0.0f, 0.0f}},
-			{{-120.0f,  120.0f,  120.0f}, {255,   0,   0, 255}, {1.0f, 0.0f}},
-			{{-120.0f, -120.0f, -120.0f}, {255,   0, 255, 255}, {1.0f, 1.0f}},
-			{{ 120.0f, -120.0f, -120.0f}, {255, 255,   0, 255}, {0.0f, 1.0f}},
-			{{ 120.0f, -120.0f,  120.0f}, {255, 255, 255, 255}, {0.0f, 1.0f}},
-			{{-120.0f, -120.0f,  120.0f}, { 70,  70,  70, 255}, {1.0f, 1.0f}},
-		};
-		const UINT vertexBufferSize = sizeof(cubeVertices);
-		ComPtr<ID3D12Resource> vertexBufferUpload;
-		CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
-		CD3DX12_RESOURCE_DESC vertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
-		hr = d3dDevice->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &vertexBufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_rscVtx));
-		if(FAILED(hr))
-			return hr;
+	UINT strideVtx = sizeof(Vertex);
+	UINT strideIdx = sizeof(uint16_t);
 
-		CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &vertexBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vertexBufferUpload));
-		if(FAILED(hr))
-			return hr;
+	// setup vertex, index count
+	m_vtxCount = sizeof(cubeVertices) / strideVtx;
+	m_idxCount = sizeof(indices     ) / strideIdx;
 
-		// Upload the vertex buffer to the GPU.
-		{
-			D3D12_SUBRESOURCE_DATA vertexData = {};
-			vertexData.pData = reinterpret_cast<BYTE*>(cubeVertices);
-			vertexData.RowPitch = vertexBufferSize;
-			vertexData.SlicePitch = vertexData.RowPitch;
+	// 업로더는 ExecuteCommandLists 완료 될 때가지 유효해야함.
+	ComPtr<ID3D12Resource>	cpuUploaderVtx{};	// vertex buffer upload heap resource
+	ComPtr<ID3D12Resource>	cpuUploaderIdx{};	// index buffer upload heap resource
+	{
+		// vertex buffer
+		CD3DX12_HEAP_PROPERTIES vtxHeapPropsGPU		(D3D12_HEAP_TYPE_DEFAULT);
+		CD3DX12_HEAP_PROPERTIES vtxHeapPropsUpload	(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC   vtxBufDesc			= CD3DX12_RESOURCE_DESC::Buffer(m_vtxCount * strideVtx);
 
-			UpdateSubresources(commandList, m_rscVtx.Get(), vertexBufferUpload.Get(), 0, 0, 1, &vertexData);
-
-			CD3DX12_RESOURCE_BARRIER vertexBufferResourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_rscVtx.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-			commandList->ResourceBarrier(1, &vertexBufferResourceBarrier);
-		}
-
-		unsigned short indices[] =
-		{
-			3, 1, 0, 2, 1, 3,
-			0, 5, 4, 1, 5, 0,
-			3, 4, 7, 0, 4, 3,
-			1, 6, 5, 2, 6, 1,
-			2, 7, 6, 3, 7, 2,
-			6, 4, 5, 7, 4, 6,
-		};
-
-		m_numIdx = sizeof(indices) / sizeof(indices[0]);
-		const UINT indexBufferSize = m_numIdx * sizeof(unsigned short);
-
-		ComPtr<ID3D12Resource> indexBufferUpload{};
-
-		CD3DX12_RESOURCE_DESC indexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
-		hr = d3dDevice->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &indexBufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_rscIdx));
-		if(FAILED(hr))
-			return hr;
-		hr = d3dDevice->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &indexBufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&indexBufferUpload));
-		if(FAILED(hr))
+		// GPU용 버텍스 버퍼
+		hr = d3dDevice->CreateCommittedResource(&vtxHeapPropsGPU, D3D12_HEAP_FLAG_NONE, &vtxBufDesc
+												, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_vtxGPU));
+		if (FAILED(hr))
 			return hr;
 
-		// Upload the index buffer to the GPU.
-		{
-			D3D12_SUBRESOURCE_DATA indexData = {};
-			indexData.pData = reinterpret_cast<BYTE*>(indices);
-			indexData.RowPitch = indexBufferSize;
-			indexData.SlicePitch = indexData.RowPitch;
-
-			UpdateSubresources(commandList, m_rscIdx.Get(), indexBufferUpload.Get(), 0, 0, 1, &indexData);
-
-			CD3DX12_RESOURCE_BARRIER indexBufferResourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_rscIdx.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-			commandList->ResourceBarrier(1, &indexBufferResourceBarrier);
-		}
-
-		// Create vertex/index buffer views.
-		m_viewVtx.BufferLocation = m_rscVtx->GetGPUVirtualAddress();
-		m_viewVtx.StrideInBytes = sizeof(Vertex);
-		m_viewVtx.SizeInBytes = sizeof(cubeVertices);
-
-		m_viewIdx.BufferLocation = m_rscIdx->GetGPUVirtualAddress();
-		m_viewIdx.SizeInBytes = sizeof(indices);
-		m_viewIdx.Format = DXGI_FORMAT_R16_UINT;
-		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 마지막으로 commandList를 닫고
-		hr = commandList->Close();
-		if(FAILED(hr))
+		// CPU 업로드 버퍼
+		hr = d3dDevice->CreateCommittedResource(&vtxHeapPropsUpload, D3D12_HEAP_FLAG_NONE, &vtxBufDesc
+												, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cpuUploaderVtx));
+		if (FAILED(hr))
 			return hr;
-		// 실행하고
-		ID3D12CommandList* ppCommandLists[] = {commandList};
-		auto commandQue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
-		commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-		// 커맨드 리스트 종료 및 GPU 대기
-		D3DApp::getInstance()-> WaitForGpu();
+
+		// setup the buffer view.
+		m_vtxView.BufferLocation = m_vtxGPU->GetGPUVirtualAddress();
+		m_vtxView.StrideInBytes  = strideVtx;
+		m_vtxView.SizeInBytes    = m_vtxCount * m_vtxView.StrideInBytes;
 	}
+
+	{
+		// index buffer
+		CD3DX12_HEAP_PROPERTIES idxHeapPropsGPU		(D3D12_HEAP_TYPE_DEFAULT);
+		CD3DX12_HEAP_PROPERTIES idxHeapPropsUpload	(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC	idxBufDesc			= CD3DX12_RESOURCE_DESC::Buffer(m_idxCount * strideIdx);
+
+		// GPU용 인덱스 버퍼
+		hr = d3dDevice->CreateCommittedResource(&idxHeapPropsGPU, D3D12_HEAP_FLAG_NONE, &idxBufDesc
+												, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_idxGPU));
+		if (FAILED(hr))
+			return hr;
+
+		// CPU 업로드 버퍼
+		hr = d3dDevice->CreateCommittedResource(&idxHeapPropsUpload, D3D12_HEAP_FLAG_NONE, &idxBufDesc
+												, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cpuUploaderIdx));
+		if (FAILED(hr))
+			return hr;
+
+		// setup the buffer view.
+		m_idxView.BufferLocation = m_idxGPU->GetGPUVirtualAddress();
+		m_idxView.SizeInBytes    = m_idxCount * strideIdx;
+		m_idxView.Format         = DXGI_FORMAT_R16_UINT;
+	}
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// beging upload to gpu memory
+
+	hr = commandAlloc->Reset();
+	if(FAILED(hr))
+		return hr;
+	hr = commandList->Reset(commandAlloc, nullptr);
+	if(FAILED(hr))
+		return hr;
+
+	// setup the vertex uploading
+	{
+		D3D12_SUBRESOURCE_DATA vertexData = {};
+		vertexData.pData      = reinterpret_cast<const BYTE*>(cubeVertices);
+		vertexData.RowPitch   = m_vtxCount * sizeof(Vertex);
+		vertexData.SlicePitch = m_vtxCount * sizeof(Vertex);
+		UpdateSubresources(commandList, m_vtxGPU.Get(), cpuUploaderVtx.Get(), 0, 0, 1, &vertexData);
+		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_vtxGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+		commandList->ResourceBarrier(1, &barrier);
+	}
+
+	// setup the index bufer uploading
+	{
+		D3D12_SUBRESOURCE_DATA indexData = {};
+		indexData.pData      = reinterpret_cast<const BYTE*>(indices);
+		indexData.RowPitch   = m_idxCount * sizeof(uint16_t);
+		indexData.SlicePitch = m_idxCount * sizeof(uint16_t);
+		UpdateSubresources(commandList, m_idxGPU.Get(), cpuUploaderIdx.Get(), 0, 0, 1, &indexData);
+		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_idxGPU.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+		commandList->ResourceBarrier(1, &barrier);
+	}
+
+	hr = commandList->Close();
+	if(FAILED(hr))
+		return hr;
+
+	// execute the uploading
+	ID3D12CommandList* ppCommandLists[] = {commandList};
+	auto commandQue = std::any_cast<ID3D12CommandQueue*>(IG2GraphicsD3D::getInstance()->GetCommandQueue());
+	commandQue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// waiting for ExecuteCommandLists complete
+	// uploader 변수가 유효하도록 gpu 완료를 기다림
+	// ComPtr<ID3D12Resource>	cpuUploaderVtx{};
+	// ComPtr<ID3D12Resource>	cpuUploaderIdx{};
+	D3DApp::getInstance()-> WaitForGpu();
+
 	return S_OK;
 }
 
