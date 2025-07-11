@@ -30,16 +30,17 @@ struct Vertex
 
 struct ConstHeap
 {
-	ID3D12DescriptorHeap*	cbvHeap		{};
-	XMMATRIX				tmWld		{};
-	ID3D12Resource*			cnstTmWld	{};
-	uint8_t*				ptrWld		{};
-	XMMATRIX				tmViw		= XMMatrixIdentity();
-	ID3D12Resource*			cnstTmViw	{};
-	uint8_t*				ptrViw		{};
-	XMMATRIX				tmPrj		= XMMatrixIdentity();
-	ID3D12Resource*			cnstTmPrj	{};
-	uint8_t*				ptrPrj		{};
+	ID3D12DescriptorHeap*		dscCbvHeap	{};
+	D3D12_GPU_DESCRIPTOR_HANDLE	descHandle	{};
+	XMMATRIX					tmWld		{};
+	ID3D12Resource*				cnstTmWld	{};
+	uint8_t*					ptrWld		{};
+	XMMATRIX					tmViw		= XMMatrixIdentity();
+	ID3D12Resource*				cnstTmViw	{};
+	uint8_t*					ptrViw		{};
+	XMMATRIX					tmPrj		= XMMatrixIdentity();
+	ID3D12Resource*				cnstTmPrj	{};
+	uint8_t*					ptrPrj		{};
 	~ConstHeap();
 };
 
@@ -53,7 +54,6 @@ protected:
 	D3D12_INDEX_BUFFER_VIEW			m_viewIdx			{};
 	UINT							m_numVtx			{};
 	UINT							m_numIdx			{};
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_cbvHandle			{};
 	ComPtr<ID3D12Resource>			m_rscVtx			{};
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
 
