@@ -28,27 +28,22 @@ struct Vertex
 	XMFLOAT2 t;
 };
 
-struct CBV_RSC
+struct CBV_RPL
 {
 	ID3D12Resource*	rsc	{};
-	uint8_t*		ptr	{};
-	UINT			len	{};		// per-constant CBV resource per object (e.g., world/view/proj)
+	uint8_t*		ptr	{};		// cbv rsc handle
+	UINT			len	{};		// 256-aligned buffer size. per-constant CBV resource per object (e.g., world/view/proj)
 };
 
 struct ConstHeap
 {
-	ID3D12DescriptorHeap*		dscCbvHeap	{};
-	D3D12_GPU_DESCRIPTOR_HANDLE	descHandle	{};
-	vector<CBV_RSC>				rpl			{};
+	ID3D12DescriptorHeap*				dscCbvHeap	{};
+	D3D12_GPU_DESCRIPTOR_HANDLE			descHandle	{};
+	vector<CBV_RPL>						cbvRpl		;
 
+	vector<D3D12_GPU_DESCRIPTOR_HANDLE>	srvTex		{};
 	~ConstHeap();
-	void setupRpl(const vector<UINT>& rplSize)
-	{
-		for(size_t i=0; i<rplSize.size(); ++i)
-		{
-			rpl.push_back({ nullptr, nullptr, rplSize[i] });
-		}
-	}
+	void setupRpl(const vector<UINT>& rplSize);
 };
 
 struct ConstObject
@@ -71,18 +66,14 @@ protected:
 	ComPtr<ID3D12Resource>			m_rscVtx			{};
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
 
-	double							m_angle				{};
 	vector<UINT>					m_cbvListSize		;
+	vector<ID3D12Resource*>			m_textureLst		;
 
-	vector<ConstHeap>				m_objCbv	{ 5,  ConstHeap{} };
-	vector<ConstObject>				m_objValue	{ 5,  ConstObject{} };
+	vector<ConstHeap>				m_objCbv			{ 5,  ConstHeap{} };
+	vector<ConstObject>				m_objValue			{ 5,  ConstObject{} };
 
-	UINT							m_numRegisterConst	{3};
-	UINT							m_numRegisterTex	{2};
-	ComPtr<ID3D12Resource>			m_textureChecker	{};		// assets/res_checker.png
-	ComPtr<ID3D12Resource>			m_textureXlogo		{};		// assets/xlogo.png
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleChecker	{};		// checker SRV GPU 핸들
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvHandleXlogo	{};		// checker SRV GPU 핸들
+	double							m_angle				{};
+
 public:
 	MainApp();
 	virtual ~MainApp();
