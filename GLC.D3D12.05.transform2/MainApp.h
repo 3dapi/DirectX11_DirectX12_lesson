@@ -32,16 +32,21 @@ struct ConstHeap
 {
 	ID3D12DescriptorHeap*		dscCbvHeap	{};
 	D3D12_GPU_DESCRIPTOR_HANDLE	descHandle	{};
-	XMMATRIX					tmWld		{};
 	ID3D12Resource*				cnstTmWld	{};
 	uint8_t*					ptrWld		{};
-	XMMATRIX					tmViw		= XMMatrixIdentity();
 	ID3D12Resource*				cnstTmViw	{};
 	uint8_t*					ptrViw		{};
-	XMMATRIX					tmPrj		= XMMatrixIdentity();
 	ID3D12Resource*				cnstTmPrj	{};
 	uint8_t*					ptrPrj		{};
+
 	~ConstHeap();
+};
+
+struct ConstObject
+{
+	XMMATRIX					tmWld		{};
+	XMMATRIX					tmViw		= XMMatrixIdentity();
+	XMMATRIX					tmPrj		= XMMatrixIdentity();
 };
 
 class MainApp
@@ -58,7 +63,8 @@ protected:
 	ComPtr<ID3D12Resource>			m_rscIdx			{};
 
 	double							m_angle				{};
-	vector< ConstHeap>				m_constHeap{ 5,  ConstHeap{} };
+	vector<ConstHeap>				m_objCbv	{ 5,  ConstHeap{} };
+	vector<ConstObject>				m_objValue	{ 5,  ConstObject{} };
 
 	UINT							m_numRegisterConst	{3};
 	UINT							m_numRegisterTex	{2};

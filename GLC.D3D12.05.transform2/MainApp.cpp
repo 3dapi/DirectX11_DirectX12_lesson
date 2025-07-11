@@ -85,7 +85,8 @@ int MainApp::Destroy()
 	m_numVtx = 0;
 	m_numIdx = 0;
 
-	m_constHeap.clear();
+	m_objCbv.clear();
+	m_objValue.clear();
 
 	return S_OK;
 }
@@ -102,21 +103,23 @@ int MainApp::Update()
 	{
 		m_angle += deltaTime ;
 		auto tmWld = XMMatrixRotationY((float)m_angle);
-		m_constHeap[0].tmWld = tmWld;
-		m_constHeap[1].tmWld = XMMatrixScaling(0.5F, 0.5F, 0.5F) * XMMatrixRotationY(FLOAT(m_angle)*2.0F) * XMMatrixTranslation(-400,    0, 0);
-		m_constHeap[2].tmWld = XMMatrixScaling(0.7F, 0.7F, 0.7F) * XMMatrixRotationY(FLOAT(m_angle)*0.5F) * XMMatrixTranslation( 400,    0, 0);
-		m_constHeap[3].tmWld = XMMatrixScaling(0.4F, 0.4F, 0.4F) * XMMatrixRotationY(FLOAT(m_angle)*3.0F) * XMMatrixTranslation(   0, -450, 0);
-		m_constHeap[4].tmWld = XMMatrixScaling(0.3F, 0.3F, 0.3F) * XMMatrixRotationY(FLOAT(m_angle)*0.3F) * XMMatrixTranslation(   0,  350, 0);
+		m_objValue[0].tmWld = tmWld;
+		m_objValue[1].tmWld = XMMatrixScaling(0.5F, 0.5F, 0.5F) * XMMatrixRotationY(FLOAT(m_angle)*2.0F) * XMMatrixTranslation(-400,    0, 0);
+		m_objValue[2].tmWld = XMMatrixScaling(0.7F, 0.7F, 0.7F) * XMMatrixRotationY(FLOAT(m_angle)*0.5F) * XMMatrixTranslation( 400,    0, 0);
+		m_objValue[3].tmWld = XMMatrixScaling(0.4F, 0.4F, 0.4F) * XMMatrixRotationY(FLOAT(m_angle)*3.0F) * XMMatrixTranslation(   0, -450, 0);
+		m_objValue[4].tmWld = XMMatrixScaling(0.3F, 0.3F, 0.3F) * XMMatrixRotationY(FLOAT(m_angle)*0.3F) * XMMatrixTranslation(   0,  350, 0);
 
-		for(size_t i=0; i<m_constHeap.size(); ++i)
+		for(size_t i=0; i< m_objCbv.size(); ++i)
 		{
 			uint8_t* dest = {};
-			dest = m_constHeap[i].ptrWld + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B0);
-			memcpy(dest, &m_constHeap[i].tmWld, sizeof(XMMATRIX));
-			dest = m_constHeap[i].ptrViw + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B1);
-			memcpy(dest, &m_constHeap[i].tmViw, sizeof(XMMATRIX));
-			dest = m_constHeap[i].ptrPrj + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B2);
-			memcpy(dest, &m_constHeap[i].tmPrj, sizeof(XMMATRIX));
+			dest = m_objCbv[i].ptrWld + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B0);
+			memcpy(dest, &m_objValue[i].tmWld, sizeof(XMMATRIX));
+
+			dest = m_objCbv[i].ptrViw + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B1);
+			memcpy(dest, &m_objValue[i].tmViw, sizeof(XMMATRIX));
+
+			dest = m_objCbv[i].ptrPrj + (currentFrameIndex * ALIGNED_MATRIX_SIZE_B2);
+			memcpy(dest, &m_objValue[i].tmPrj, sizeof(XMMATRIX));
 		}
 	}
 	return S_OK;
@@ -140,10 +143,10 @@ int MainApp::Render()
 	cmdList->IASetVertexBuffers(0, 1, &m_viewVtx);
 	cmdList->IASetIndexBuffer(&m_viewIdx);
 
-	for (size_t i = 0; i < m_constHeap.size(); ++i)
+	for (size_t i = 0; i < m_objCbv.size(); ++i)
 	{
 		// 5. 디스크립터 힙 설정
-		auto& cbvHeap = m_constHeap[i].dscCbvHeap;
+		auto& cbvHeap = m_objCbv[i].dscCbvHeap;
 		ID3D12DescriptorHeap* descriptorHeaps[] = { cbvHeap };
 		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
@@ -282,21 +285,21 @@ int MainApp::InitResource()
 	// Create a descriptor heap for the constant buffers.
 	UINT numDescriptor = FRAME_BUFFER_COUNT * m_numRegisterConst		// per-object b0~ m_numRegisterConst
 						+ m_numRegisterTex;								// SRV for textures(current is 2)
-	for(size_t i=0; i<m_constHeap.size(); ++i)
+	for(size_t i=0; i<m_objCbv.size(); ++i)
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 		heapDesc.NumDescriptors = numDescriptor;
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_constHeap[i].dscCbvHeap));
+		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_objCbv[i].dscCbvHeap));
 		if(FAILED(hr))
 			return hr;
-		m_constHeap[i].descHandle = m_constHeap[i].dscCbvHeap->GetGPUDescriptorHandleForHeapStart();
+		m_objCbv[i].descHandle = m_objCbv[i].dscCbvHeap->GetGPUDescriptorHandleForHeapStart();
 	}
 		
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 상수 버퍼용 리소스 생성
-	for(size_t i=0; i<m_constHeap.size(); ++i)
+	for(size_t i=0; i<m_objCbv.size(); ++i)
 	{
 		CD3DX12_RANGE readRange(0, 0);
 		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
@@ -306,11 +309,11 @@ int MainApp::InitResource()
 												, D3D12_HEAP_FLAG_NONE
 												, &constantBufferDesc0
 												, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&m_constHeap[i].cnstTmWld));
+												, nullptr, IID_PPV_ARGS(&m_objCbv[i].cnstTmWld));
 		if(FAILED(hr))
 			return hr;
 		readRange = CD3DX12_RANGE(0, 0);
-		hr = m_constHeap[i].cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_constHeap[i].ptrWld));
+		hr = m_objCbv[i].cnstTmWld->Map(0, &readRange, reinterpret_cast<void**>(&m_objCbv[i].ptrWld));
 		if (FAILED(hr))
 			return hr;
 
@@ -319,11 +322,11 @@ int MainApp::InitResource()
 												, D3D12_HEAP_FLAG_NONE
 												, &constantBufferDesc1
 												, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&m_constHeap[i].cnstTmViw));
+												, nullptr, IID_PPV_ARGS(&m_objCbv[i].cnstTmViw));
 		if(FAILED(hr))
 			return hr;
 		readRange = CD3DX12_RANGE(0, 0);
-		hr = m_constHeap[i].cnstTmViw->Map(0, &readRange, reinterpret_cast<void**>(&m_constHeap[i].ptrViw));
+		hr = m_objCbv[i].cnstTmViw->Map(0, &readRange, reinterpret_cast<void**>(&m_objCbv[i].ptrViw));
 		if (FAILED(hr))
 			return hr;
 
@@ -332,11 +335,11 @@ int MainApp::InitResource()
 												, D3D12_HEAP_FLAG_NONE
 												, &constantBufferDesc2
 												, D3D12_RESOURCE_STATE_GENERIC_READ
-												, nullptr, IID_PPV_ARGS(&m_constHeap[i].cnstTmPrj));
+												, nullptr, IID_PPV_ARGS(&m_objCbv[i].cnstTmPrj));
 		if(FAILED(hr))
 			return hr;
 		readRange = CD3DX12_RANGE(0, 0);
-		hr = m_constHeap[i].cnstTmPrj->Map(0, &readRange, reinterpret_cast<void**>(&m_constHeap[i].ptrPrj));
+		hr = m_objCbv[i].cnstTmPrj->Map(0, &readRange, reinterpret_cast<void**>(&m_objCbv[i].ptrPrj));
 		if (FAILED(hr))
 			return hr;
 	}
@@ -344,12 +347,12 @@ int MainApp::InitResource()
 	UINT descriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	// 4. 상수 레지스터.
-	for(size_t i=0; i<m_constHeap.size(); ++i)
+	for(size_t i=0; i<m_objCbv.size(); ++i)
 	{
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = m_constHeap[i].dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
+		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = m_objCbv[i].dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
 		// b0
 		{
-			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_constHeap[i].cnstTmWld->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_objCbv[i].cnstTmWld->GetGPUVirtualAddress();
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 
 			for (UINT n = 0; n < FRAME_BUFFER_COUNT; ++n)
@@ -363,7 +366,7 @@ int MainApp::InitResource()
 		}
 		// b1
 		{
-			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_constHeap[i].cnstTmViw->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_objCbv[i].cnstTmViw->GetGPUVirtualAddress();
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 
 			for (UINT n = 0; n < FRAME_BUFFER_COUNT; ++n)
@@ -377,7 +380,7 @@ int MainApp::InitResource()
 		}
 		// b2
 		{
-			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_constHeap[i].cnstTmPrj->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_objCbv[i].cnstTmPrj->GetGPUVirtualAddress();
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 
 			for (UINT n = 0; n < FRAME_BUFFER_COUNT; ++n)
@@ -424,10 +427,10 @@ int MainApp::InitResource()
 	//FRAME_BUFFER_COUNT * m_numRegisterConst <- 3
 	UINT baseSRVIndex = FRAME_BUFFER_COUNT * m_numRegisterConst;
 
-	for(size_t i=0; i<m_constHeap.size(); ++i)
+	for(size_t i=0; i<m_objCbv.size(); ++i)
 	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_constHeap[i].dscCbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
-		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_constHeap[i].dscCbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_objCbv[i].dscCbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_objCbv[i].dscCbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
 
 		// texture viewer 생성
 		{
@@ -576,10 +579,10 @@ int MainApp::InitConstValue()
 	static const XMVECTORF32 at  = {0.0f, 0.0f, 0.0f, 0.0f};
 	static const XMVECTORF32 up  = {0.0f, 1.0f, 0.0f, 0.0f};
 
-	for(size_t i=0; i<m_constHeap.size(); ++i)
+	for(size_t i=0; i< m_objValue.size(); ++i)
 	{
-		m_constHeap[i].tmPrj = XMMatrixPerspectiveFovLH(XM_PIDIV4 * 1.2F, aspectRatio, 1.0f, 5000.0f);
-		m_constHeap[i].tmViw = XMMatrixLookAtLH(eye, at, up);
+		m_objValue[i].tmPrj = XMMatrixPerspectiveFovLH(XM_PIDIV4 * 1.2F, aspectRatio, 1.0f, 5000.0f);
+		m_objValue[i].tmViw = XMMatrixLookAtLH(eye, at, up);
 	}
 
 	return S_OK;
