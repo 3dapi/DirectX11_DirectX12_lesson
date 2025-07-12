@@ -268,15 +268,6 @@ int MainApp::InitDeviceResource()
 		if (FAILED(hr))
 			return hr;
 	}
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = NUM_SRV;									// t0~: front, back 버퍼에서 텍스처는 변경이 없으므로 FRAME_BUFFER_COUNT 만큼 만들지는 않음.
-		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap));
-		if (FAILED(hr))
-			return hr;
-	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 6. 상수 버퍼용 리소스 생성

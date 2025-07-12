@@ -37,7 +37,6 @@ protected:
 	ComPtr<ID3D12DescriptorHeap>	m_cbvHeap			{};
 	ComPtr<ID3D12Resource>			m_cbv0rsc			{};
 	uint8_t*						m_cbv0ptr			{};
-	ComPtr<ID3D12DescriptorHeap>	m_srvHeap			{};
 
 	UINT							m_vtxCount			{};
 	ComPtr<ID3D12Resource>			m_vtxGPU			{};			// vertex buffer default heap resource
