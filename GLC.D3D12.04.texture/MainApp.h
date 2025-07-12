@@ -34,13 +34,10 @@ protected:
 	ComPtr<ID3D12RootSignature>		m_rootSignature		{};
 	ComPtr<ID3D12PipelineState>		m_pipelineState		{};
 
-	ComPtr<ID3D12DescriptorHeap>	m_dscCbvHeap		{};
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_descHandle		{};
+	ComPtr<ID3D12DescriptorHeap>	m_cbvHeap			{};
 	ComPtr<ID3D12Resource>			m_cbv0rsc			{};
 	uint8_t*						m_cbv0ptr			{};
-
-	ComPtr<ID3D12Resource>			m_textureRsc		{};		// assets/res_checker.png
-	D3D12_GPU_DESCRIPTOR_HANDLE		m_srvTex0			{};		// checker SRV GPU 핸들
+	ComPtr<ID3D12DescriptorHeap>	m_srvHeap			{};
 
 	UINT							m_vtxCount			{};
 	ComPtr<ID3D12Resource>			m_vtxGPU			{};			// vertex buffer default heap resource
@@ -49,6 +46,12 @@ protected:
 	UINT							m_idxCount			{};
 	ComPtr<ID3D12Resource>			m_idxGPU			{};			// index buffer default heap resource
 	D3D12_INDEX_BUFFER_VIEW			m_idxView			{};
+
+	const UINT NUM_CBV = 1;								// 셰이더 상수 레지스터 숫자
+	const UINT NUM_SRV = 1;								// 셰이더 텍스처 텍스처 레지스터
+	const UINT NUM_CB_TX = NUM_CBV + NUM_SRV;
+
+	ComPtr<ID3D12Resource>			m_textureRsc		{};		// assets/res_checker.png
 
 public:
 	MainApp();

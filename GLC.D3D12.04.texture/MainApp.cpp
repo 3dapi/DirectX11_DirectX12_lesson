@@ -1,5 +1,6 @@
 ﻿#include <any>
 #include <memory>
+#include <vector>
 #include <Windows.h>
 #include <d3d12.h>
 #include <DirectxColors.h>
@@ -18,7 +19,19 @@
 #include "G2Util.h"
 #include "D3DApp.h"
 #include "GameTimer.h"
+
+using namespace std;
+
 GameTimer	m_timer;
+
+inline CD3DX12_GPU_DESCRIPTOR_HANDLE GetGpuHandle(ID3D12DescriptorHeap* heap, UINT index, UINT descriptorSize)
+{
+	return CD3DX12_GPU_DESCRIPTOR_HANDLE(heap->GetGPUDescriptorHandleForHeapStart(), index, descriptorSize);
+}
+inline CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuHandle(ID3D12DescriptorHeap* heap, UINT index, UINT descriptorSize)
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(heap->GetCPUDescriptorHandleForHeapStart(), index, descriptorSize);
+}
 
 MainApp::MainApp()
 {
@@ -50,7 +63,7 @@ int MainApp::Init()
 
 int MainApp::Destroy()
 {
-	m_dscCbvHeap		.Reset();
+	m_cbvHeap		.Reset();
 	m_rootSignature	.Reset();
 	m_pipelineState	.Reset();
 
@@ -58,7 +71,6 @@ int MainApp::Destroy()
 	m_idxView		= {};
 	m_vtxCount		= {};
 	m_idxCount		= {};
-	m_descHandle		= {};
 
 	m_vtxGPU		.Reset();
 	m_idxGPU		.Reset();
@@ -67,7 +79,6 @@ int MainApp::Destroy()
 	m_cbv0rsc		.Reset();
 	m_cbv0ptr		= {};
 	m_textureRsc	.Reset();
-	m_srvTex0	= {};
 
 	return S_OK;
 }
@@ -110,16 +121,16 @@ int MainApp::Render()
 	cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 
 	// 2. 디스크립터 힙 설정
-	ID3D12DescriptorHeap* descriptorHeaps[] = {m_dscCbvHeap.Get()};
+	ID3D12DescriptorHeap* descriptorHeaps[] = {m_cbvHeap.Get()};
 	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	// 3. CBV 핸들 계산 및 바인딩 (root parameter index 0 = b0)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE handleMVP(m_dscCbvHeap->GetGPUDescriptorHandleForHeapStart(), 0 * FRAME_BUFFER_COUNT + currentFrameIndex, descriptorSize);
+	// 3. CBV 바인딩
+	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(GetGpuHandle(m_cbvHeap.Get(), currentFrameIndex * 1 + 0, descriptorSize));
+	cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 
-	cmdList->SetGraphicsRootDescriptorTable(0, handleMVP);
-
-	// 4. SRV 핸들 바인딩 (root parameter index 상수 레지스터 다음 3 = t0, 4= t1)
-	cmdList->SetGraphicsRootDescriptorTable(1, m_srvTex0);
+	// 4. SRV 바인딩
+	CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(GetGpuHandle(m_cbvHeap.Get(),  FRAME_BUFFER_COUNT * NUM_CBV + 0, descriptorSize));
+	cmdList->SetGraphicsRootDescriptorTable(1, srvHandle);
 
 	// 5. 파이프라인 연결
 	cmdList->SetPipelineState(m_pipelineState.Get());
@@ -146,11 +157,6 @@ int MainApp::InitDeviceResource()
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// ★★★★★★★★★★★★★★★
-	const UINT NUM_CB = 1;						// 셰이더 상수 레지스터 숫자
-	const UINT NUM_TX = 1;						// 셰이더 텍스처 텍스처 레지스터
-	const UINT NUM_CB_TX = NUM_CB + NUM_TX;
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// 1. 텍스처 생성 및 업로드 (CreateWICTextureFromFile + ResourceUploadBatch)
 	{
 		DirectX::ResourceUploadBatch resourceUpload(d3dDevice);
@@ -190,27 +196,27 @@ int MainApp::InitDeviceResource()
 	//3. Create a root signature with a single constant buffer slot.
 	{
 		// sampler register 갯수는 상관 없음.
-		CD3DX12_STATIC_SAMPLER_DESC staticSampler[] =
+		vector<CD3DX12_STATIC_SAMPLER_DESC> staticSampler =
 		{
 			{ 0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
 			{ 1, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
 		};
 
 		// 2 = 상수 레지스터 1 + 텍스처 레지스터 1
-		CD3DX12_DESCRIPTOR_RANGE descRange[NUM_CB_TX];
+		vector<CD3DX12_DESCRIPTOR_RANGE> descRange{ NUM_CB_TX, CD3DX12_DESCRIPTOR_RANGE{} };
 		descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0); // b0
 		descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
 
-		CD3DX12_ROOT_PARAMETER rootParams[2];
+		vector<CD3DX12_ROOT_PARAMETER> rootParams{ NUM_CB_TX, CD3DX12_ROOT_PARAMETER{} };
 		rootParams[0].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_VERTEX);		// cbv
 		rootParams[1].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);		// src
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc;
 		rootSigDesc.Init(
-			_countof(rootParams),
-			rootParams,
-			2,					// sampler register 숫자.
-			staticSampler,		// sampler register desc
+			(UINT)rootParams.size(),
+			&rootParams[0],
+			(UINT)staticSampler.size(),					// sampler register 숫자.
+			&staticSampler[0],							// sampler register desc
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
 			D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
 			D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
@@ -255,13 +261,21 @@ int MainApp::InitDeviceResource()
 	// ★★★★★★★★★★★★★★★
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = FRAME_BUFFER_COUNT * NUM_CB + NUM_TX;	// 프레임당 상수 버퍼 3개 (b0~b2) * 프레임 수 + 텍스처용 SRV(t0,t0) 2개
+		heapDesc.NumDescriptors = FRAME_BUFFER_COUNT * NUM_CBV + NUM_SRV;	// 프레임당 상수 버퍼 3개 (b0~b2) * 프레임 수 + 텍스처용 SRV(t0,t0) 2개
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_dscCbvHeap));
+		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
 		if (FAILED(hr))
 			return hr;
-		m_descHandle = m_dscCbvHeap->GetGPUDescriptorHandleForHeapStart();
+	}
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+		heapDesc.NumDescriptors = NUM_SRV;									// t0~: front, back 버퍼에서 텍스처는 변경이 없으므로 FRAME_BUFFER_COUNT 만큼 만들지는 않음.
+		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		hr = d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap));
+		if (FAILED(hr))
+			return hr;
 	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -284,7 +298,7 @@ int MainApp::InitDeviceResource()
 			return hr;
 	}
 	{
-		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
+		D3D12_CPU_DESCRIPTOR_HANDLE cbvCpuHandle = m_cbvHeap->GetCPUDescriptorHandleForHeapStart();
 		// b0:
 		{
 			D3D12_GPU_VIRTUAL_ADDRESS cbvGpuAddress = m_cbv0rsc->GetGPUVirtualAddress();
@@ -308,16 +322,14 @@ int MainApp::InitDeviceResource()
 	// 실수 많이함. rootSigDesc 초기화 부분과 일치해야함.
 	// ★★★★★★★★★★★★★★★
 	// 3개 상수 레지스터 다음부터 텍스처 레지스터(셰이더 참고)
-	//FRAME_BUFFER_COUNT * NUM_CB
+	//FRAME_BUFFER_COUNT * NUM_CBV
 	{
-		UINT baseSRVIndex = FRAME_BUFFER_COUNT * (UINT)NUM_CB;
-		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(m_dscCbvHeap->GetCPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
-		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(m_dscCbvHeap->GetGPUDescriptorHandleForHeapStart(), baseSRVIndex, descriptorSize);
+		UINT baseSRVIndex = FRAME_BUFFER_COUNT * (UINT)NUM_CBV;
+		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv(GetCpuHandle(m_cbvHeap.Get(), baseSRVIndex, descriptorSize));
+		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv(GetGpuHandle(m_cbvHeap.Get(), baseSRVIndex, descriptorSize));
 
 		// texture viewer 생성
 		{
-			m_srvTex0 = hGpuSrv;					// CPU, GPU OFFSET을 이동후 Heap pointer 위치를 저장 이 핸들 값이 텍스처 핸들
-
 			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 			srvDesc.Format = m_textureRsc->GetDesc().Format;
