@@ -163,11 +163,13 @@ int MainApp::InitTexture()
 	auto cmdAlloc = std::any_cast<ID3D12CommandAllocator*>(IG2GraphicsD3D::getInstance()->GetCommandAllocator());
 	auto cmdList  = std::any_cast<ID3D12GraphicsCommandList*>(IG2GraphicsD3D::getInstance()->GetCommandList());
 
-	std::string testMessage = "GDI 한글 출력";
+	std::string testMessage = "다람쥐 헌 쳇바퀴에 타고파";
 
-	HFONT hFont = CreateFontA(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+	hr = AddFontResourceEx("assets/font/GodoB.ttf", FR_PRIVATE, nullptr);
+
+	HFONT hFont = CreateFont(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 							  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-							  DEFAULT_PITCH | FF_DONTCARE, "Arial");
+							  DEFAULT_PITCH | FF_DONTCARE, "고도 B");
 
 	auto strSize = StringSize(testMessage, hFont);
 
@@ -202,6 +204,7 @@ int MainApp::InitTexture()
 	DeleteObject(hBitmap);
 	DeleteObject(hFont);
 	DeleteDC(hdcMem);
+	RemoveFontResourceEx("assets/GodoB.ttf", FR_PRIVATE, nullptr);
 
 	auto pixels = pxlBitmap.get();
 	for(int y = 0; y < height; ++y)
@@ -314,7 +317,7 @@ int MainApp::InitDeviceResource()
 		if (FAILED(hr))
 			return hr;
 	}
-	// Setup the input element decription.
+	// Setup the input element description.
 	static const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 	{
 		{"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT    , 0, 0                                  , D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -489,10 +492,10 @@ int MainApp::SetupResource()
 	// 버텍스 버퍼는 CreateCommittedResource 내부에서 heap 사용?
 	Vertex cubeVertices[] =
 	{
-		{{-400.0f,  200.0f}, {255,   0,   0, 255}, {0.0f, 0.0f}},
-		{{ 400.0f,  200.0f}, {  0, 255,   0, 255}, {1.0f, 0.0f}},
-		{{ 400.0f, -200.0f}, {  0,   0, 255, 255}, {1.0f, 1.0f}},
-		{{-400.0f, -200.0f}, {255,   0, 255, 255}, {0.0f, 1.0f}},
+		{{-800.0f,  150.0f}, {255,   0,   0, 255}, {0.0f, 0.0f}},
+		{{ 800.0f,  150.0f}, {  0, 255,   0, 255}, {1.0f, 0.0f}},
+		{{ 800.0f, -150.0f}, {  0,   0, 255, 255}, {1.0f, 1.0f}},
+		{{-800.0f, -150.0f}, {255,   0, 255, 255}, {0.0f, 1.0f}},
 	};
 	uint16_t indices[] = { 0, 1, 2, 0, 2, 3, };
 
