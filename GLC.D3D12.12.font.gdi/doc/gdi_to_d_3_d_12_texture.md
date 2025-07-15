@@ -127,6 +127,8 @@ int CreateTextureFromText(ID3D12Device* device, ID3D12GraphicsCommandList* cmdLi
     return S_OK;
 }
 ```
+## 결과
+- <img width="320" alt="directx12_hangul_gdi_to_texture" src="https://github.com/user-attachments/assets/97e6e931-05a9-46ce-bd89-849d35031657" />
 
 ---
 
