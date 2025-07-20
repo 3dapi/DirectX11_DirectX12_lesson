@@ -131,20 +131,6 @@ int MainApp::Update()
 		m_objValue[2].tmWld = XMMatrixScaling(0.7F, 0.7F, 0.7F) * XMMatrixRotationY(FLOAT(m_angle)*0.5F) * XMMatrixTranslation( 400,    0, 0);
 		m_objValue[3].tmWld = XMMatrixScaling(0.4F, 0.4F, 0.4F) * XMMatrixRotationY(FLOAT(m_angle)*3.0F) * XMMatrixTranslation(   0, -450, 0);
 		m_objValue[4].tmWld = XMMatrixScaling(0.3F, 0.3F, 0.3F) * XMMatrixRotationY(FLOAT(m_angle)*0.3F) * XMMatrixTranslation(   0,  350, 0);
-
-		for(size_t i=0; i< m_objCbv.size(); ++i)
-		{
-			uint8_t* dest = {};
-			auto& cbv = m_objCbv[i];
-			dest = cbv.cbvRpl[0].ptr + (currentFrameIndex * cbv.cbvRpl[0].len);
-			memcpy(dest, &m_objValue[i].tmWld, sizeof(XMMATRIX));
-
-			dest = cbv.cbvRpl[1].ptr + (currentFrameIndex * cbv.cbvRpl[1].len);
-			memcpy(dest, &m_objValue[i].tmViw, sizeof(XMMATRIX));
-
-			dest = cbv.cbvRpl[2].ptr + (currentFrameIndex * cbv.cbvRpl[2].len);
-			memcpy(dest, &m_objValue[i].tmPrj, sizeof(XMMATRIX));
-		}
 	}
 	return S_OK;
 }
@@ -171,12 +157,24 @@ int MainApp::Render()
 	{
 		auto& cbv = m_objCbv[i];
 
-		// 5. 디스크립터 힙 설정
+		// 5. 상수 버퍼 설정.
+		uint8_t* dest = {};
+		dest = cbv.cbvRpl[0].ptr + (currentFrameIndex * cbv.cbvRpl[0].len);
+		memcpy(dest, &m_objValue[i].tmWld, sizeof(XMMATRIX));
+
+		dest = cbv.cbvRpl[1].ptr + (currentFrameIndex * cbv.cbvRpl[1].len);
+		memcpy(dest, &m_objValue[i].tmViw, sizeof(XMMATRIX));
+
+		dest = cbv.cbvRpl[2].ptr + (currentFrameIndex * cbv.cbvRpl[2].len);
+		memcpy(dest, &m_objValue[i].tmPrj, sizeof(XMMATRIX));
+
+
+		// 6. 디스크립터 힙 설정
 		auto& cbvHeap = cbv.dscCbvHeap;
 		ID3D12DescriptorHeap* descriptorHeaps[] = { cbvHeap };
 		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-		// 6. cbv 바인딩
+		// 7. cbv 바인딩
 		for(UINT kk=0; kk<(UINT)cbv.cbvRpl.size(); ++kk)
 		{
 			auto base = cbvHeap->GetGPUDescriptorHandleForHeapStart();
@@ -184,14 +182,14 @@ int MainApp::Render()
 			cmdList->SetGraphicsRootDescriptorTable(kk, gpuH);
 		}
 
-		// 7. SRV 바인딩
+		// 8. SRV 바인딩
 		UINT base = (UINT)cbv.cbvRpl.size();
 		for(UINT kk=0; kk<(UINT)cbv.srvTex.size(); ++kk)
 		{
 			cmdList->SetGraphicsRootDescriptorTable(base + kk, cbv.srvTex[ kk ]);
 		}
 		
-		// 8. draw
+		// 9. draw
 		cmdList->DrawIndexedInstanced(m_idxCount, 1, 0, 0, 0);
 	}
 
@@ -381,7 +379,6 @@ int MainApp::InitDeviceResource()
 		// 6. Descriptor Heap 의존: 상수 버퍼용 리소스, 뷰: 변수 의존은 없으나 상수 버퍼 디스크립션 힙에 의존. 공유하면 마지막에 쓴 값으로 렌더링
 		// Create a constant buffer descriptor heap and view for constant buffers.
 		
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = cbv.dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
 		for (size_t k=0; k<cbv.cbvRpl.size(); ++k)
 		{
 			CD3DX12_RESOURCE_DESC cbd = CD3DX12_RESOURCE_DESC::Buffer(FRAME_BUFFER_COUNT * cbv.cbvRpl[k].len);
@@ -394,8 +391,18 @@ int MainApp::InitDeviceResource()
 			hr = cbv.cbvRpl[k].rsc->Map(0, &readRange, reinterpret_cast<void**>(&cbv.cbvRpl[k].ptr));
 			if (FAILED(hr))
 				return hr;
+		}
+	}
 
-			// 4. 상수 버퍼 뷰 생성.
+	for(size_t i = 0; i<m_objCbv.size(); ++i)
+	{
+		auto& cbv = m_objCbv[i];
+
+		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// 7. 상수 버퍼 뷰: Descriptor Heap 의존
+		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = cbv.dscCbvHeap->GetCPUDescriptorHandleForHeapStart();
+		for (size_t k=0; k<cbv.cbvRpl.size(); ++k)
+		{
 			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = cbv.cbvRpl[k].rsc->GetGPUVirtualAddress();
 			UINT bufSize = cbv.cbvRpl[k].len;
 			D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
@@ -408,10 +415,15 @@ int MainApp::InitDeviceResource()
 				gpuAddress += desc.SizeInBytes;
 				cpuHandle.ptr += descriptorSize;
 			}
-		}	
+		}
+	}
+
+	for(size_t i = 0; i<m_objCbv.size(); ++i)
+	{
+		auto& cbv = m_objCbv[i];
 
 		// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 7. Descriptor Heap 의존: 텍스처 디스크립터: 6.의 연장
+		// 8. 텍스처 뷰: Descriptor Heap 의존
 		// Create Texture register SRV descriptor.
 		// FRAME_BUFFER_COUNT * 상수 버퍼 레지스터 수만큼 다음이 텍스처 레지스터 시작.
 		UINT baseSRVIndex = FRAME_BUFFER_COUNT * (UINT)cbv.cbvRpl.size();
