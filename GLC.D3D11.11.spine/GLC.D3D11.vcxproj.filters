@@ -36,7 +36,10 @@
     <ClCompile Include="G2Base.cpp">
       <Filter>s</Filter>
     </ClCompile>
-    <ClCompile Include="DDSTextureLoader.cpp">
+    <ClCompile Include="GameTimer.cpp">
+      <Filter>s</Filter>
+    </ClCompile>
+    <ClCompile Include="SceneSpine.cpp">
       <Filter>s</Filter>
     </ClCompile>
   </ItemGroup>
@@ -53,13 +56,22 @@
     <ClInclude Include="G2Base.h">
       <Filter>h</Filter>
     </ClInclude>
-    <ClInclude Include="DDSTextureLoader.h">
-      <Filter>h</Filter>
+    <ClInclude Include="GameTimer.h">
+      <Filter>s</Filter>
+    </ClInclude>
+    <ClInclude Include="SceneSpine.h">
+      <Filter>s</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="assets\shader\simple.hlsl">
       <Filter>asset\shader</Filter>
     </FxCompile>
+    <FxCompile Include="assets\shader\spine.hlsl">
+      <Filter>asset\shader</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>
